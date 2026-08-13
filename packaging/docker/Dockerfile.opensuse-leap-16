@@ -1,0 +1,20 @@
+# Packaging build image for rmstory-opensuse-leap-16. Bakes in every
+# dependency packaging/build-rpm.sh needs, on the same distro the package
+# targets -- generated from (and must be kept in sync with) the combo
+# definition in ../../../.github/workflows/build-packages.yml.
+#
+# Leap 16's default python3 is already current (3.13, confirmed against
+# the real image -- unlike Leap 15's default 3.6), so no alternate
+# interpreter is needed. But -devel/-setuptools/-pip/-pytest/-PyYAML are
+# only packaged under the version-specific name (python313-*, confirmed
+# against the real repo metadata), not the plain python3-* names
+# Tumbleweed uses -- so those are installed by their exact versioned
+# name, computed from the python3 that's actually installed rather than
+# hardcoded, so this doesn't silently break on a future Leap 16.x point
+# release shipping a newer python3 minor version.
+FROM opensuse/leap:16.0
+
+RUN zypper --non-interactive install rpm-build python3 tar git && \
+    PYVER="$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')" && \
+    zypper --non-interactive install "python${PYVER}-devel" "python${PYVER}-setuptools" "python${PYVER}-pip" "python${PYVER}-pytest" "python${PYVER}-PyYAML" && \
+    zypper clean --all

@@ -1,0 +1,121 @@
+# Builds native packages for every distro documented in
+# packaging/README.md (Debian bookworm, Fedora latest, openSUSE
+# Tumbleweed, openSUSE Leap 16 -- openSUSE Leap 15 is deliberately not
+# supported, see that file), and uploads each as a build artifact named
+# rmstory-<combo.name>. Version comes from scripts/compute-version.sh:
+# the exact tag when HEAD is a release, otherwise <latest tag or
+# pyproject.toml's version> plus today's date. Each package gets a
+# matching .sha512 file (see packaging/build-deb.sh /
+# packaging/build-rpm.sh) uploaded alongside it.
+#
+# Modeled on multilang-lib's own .github/workflows/build-packages.yml
+# (same author, same convention), trimmed from that project's 5-language
+# x 4-distro matrix down to this project's single language x 4 distros.
+#
+# Each combo builds on the *same distro it packages for* -- a Debian
+# package is built inside a Debian container, an RPM for Fedora is built
+# inside a Fedora container, etc. -- via a Dockerfile per combo at
+# packaging/docker/Dockerfile.<distro> that bakes in every build
+# dependency. Building the Dockerfile as an explicit step (rather than
+# installing dependencies at runtime into a bare image via the job's own
+# `container:` field) means checkout runs on the host runner, which
+# always has git and tar, before the container is even built.
+#
+# multilang-lib (this package's one runtime dependency) isn't baked into
+# these images -- see packaging/README.md's "multilang-lib is a
+# build-time-only dependency here" -- so %check/dh_auto_test skip
+# gracefully instead of failing the build; the packages this workflow
+# produces are real and installable, just untested-at-build-time until
+# multilang-lib publishes its own native packages.
+
+name: Build packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rmstory/**"
+      - "tests/**"
+      - "packaging/**"
+      - "pyproject.toml"
+      - "scripts/compute-version.sh"
+      - ".github/workflows/build-packages.yml"
+  pull_request:
+    paths:
+      - "rmstory/**"
+      - "tests/**"
+      - "packaging/**"
+      - "pyproject.toml"
+      - "scripts/compute-version.sh"
+      - ".github/workflows/build-packages.yml"
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: package (${{ matrix.combo.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        combo:
+          - name: debian-bookworm
+            distro: debian-bookworm
+            build: packaging/build-deb.sh
+            collect: cp ../*.deb ../*.deb.sha512 dist-packages/
+          - name: fedora-latest
+            distro: fedora-latest
+            build: packaging/build-rpm.sh
+            collect: find "$HOME/rpmbuild/RPMS" "$HOME/rpmbuild/SRPMS" -name "*.rpm" -o -name "*.sha512" | xargs -I{} cp {} dist-packages/
+          - name: opensuse-tumbleweed
+            distro: opensuse-tumbleweed
+            build: packaging/build-rpm.sh
+            collect: find "$HOME/rpmbuild/RPMS" "$HOME/rpmbuild/SRPMS" -name "*.rpm" -o -name "*.sha512" | xargs -I{} cp {} dist-packages/
+          - name: opensuse-leap-16
+            distro: opensuse-leap-16
+            build: RMSTORY_LEAP_VERSIONED_PYTHON=1 packaging/build-rpm.sh
+            collect: find "$HOME/rpmbuild/RPMS" "$HOME/rpmbuild/SRPMS" -name "*.rpm" -o -name "*.sha512" | xargs -I{} cp {} dist-packages/
+    steps:
+      # Checked out into a named subdirectory, not $GITHUB_WORKSPACE
+      # directly: packaging/build-deb.sh writes its output to `../*.deb`
+      # (the repo's parent directory -- see packaging/README.md), so the
+      # bind mount below needs a real parent directory to land in. A
+      # bare `-v "$PWD:/workspace"` with the repo checked out at $PWD
+      # itself would put that `../*.deb` output *outside* the mount,
+      # in the container's ephemeral filesystem, gone the moment it
+      # exits -- lost exactly the way it was when this was first tried
+      # by hand against a plain checkout.
+      - uses: actions/checkout@v7
+        with:
+          path: rmstory-lib
+      - name: Build the ${{ matrix.combo.distro }} packaging image
+        run: >
+          docker build
+          -t pkgimg
+          -f rmstory-lib/packaging/docker/Dockerfile.${{ matrix.combo.distro }}
+          rmstory-lib/packaging/docker
+      - name: Build package + checksum, then collect into a fixed path
+        # Runs as a single `docker run` (build + collect together, not
+        # two separate steps): rpmbuild writes to $HOME/rpmbuild *inside*
+        # the container, which is gone the moment `--rm` exits, so
+        # collecting has to happen before that container exits. $PWD (the
+        # parent of the checked-out repo) is bind-mounted in and is what
+        # persists on the host afterward for actions/upload-artifact.
+        #
+        # The inner `bash -c '...'` is deliberately single-quoted, not
+        # double-quoted: matrix.combo.collect's `find "$HOME/rpmbuild/..."`
+        # needs $HOME to resolve *inside the container* (root's $HOME,
+        # where rpmbuild actually writes) -- with double quotes here, the
+        # outer runner shell would expand $HOME itself (to /home/runner,
+        # which has no rpmbuild dir at all) before docker even starts.
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace/rmstory-lib pkgimg bash -c '
+            set -e
+            ${{ matrix.combo.build }}
+            mkdir -p dist-packages
+            ${{ matrix.combo.collect }}
+          '
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rmstory-${{ matrix.combo.name }}
+          path: rmstory-lib/dist-packages/
+          if-no-files-found: error

@@ -6,6 +6,17 @@ __pycache__/
 build/
 dist/
 .ruff_cache/
+.pybuild/
+
+# Packaging build output (see packaging/README.md -- these are only ever
+# meant to be produced by packaging/build-{deb,rpm}.sh, inside a
+# container targeting the real distro, never committed)
+/debian/
+dist-packages/
+*.deb
+*.deb.sha512
+*.rpm
+*.rpm.sha512
 
 # Local test/example scratch data (e.g. storage roots created by running
 # examples or the CLI by hand)

@@ -1,0 +1,7 @@
+rmstory (0.1.0-1) unstable; urgency=medium
+
+  * Initial release: extract/translate/story/validate CLI, translation
+    storage via multilang-lib, per-story ordered-id indexes, and six
+    pluggable machine-translation engines.
+
+ -- Raúl Mahiques <claude.ia@raulmahiques.com>  Thu, 13 Aug 2026 00:00:00 +0000

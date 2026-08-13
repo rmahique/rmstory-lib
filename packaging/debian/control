@@ -1,0 +1,26 @@
+Source: rmstory
+Section: python
+Priority: optional
+Maintainer: Raúl Mahiques <claude.ia@raulmahiques.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-all,
+               python3-setuptools,
+               python3-yaml,
+               python3-pytest <!nocheck>
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: python3-rmstory
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3-yaml, python3-multilang
+Description: Translate and recombine stories authored as tagged spans
+ Provides the rmstory CLI (extract/translate/story/validate) and library
+ API for translating and recombining stories authored as tagged <span>
+ elements in markdown/HTML files. Translations are stored via
+ multilang-lib (python3-multilang); a story is a lightweight ordered-id
+ index, not a second content store. Six pluggable machine-translation
+ engines are available (gemini, deepl, google-translate,
+ microsoft-translator, libretranslate, baidu) -- the last three need no
+ extra package, the first three need their SDK installed separately via
+ pip (see README.md).

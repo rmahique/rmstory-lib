@@ -1,0 +1,8 @@
+# Packaging build image for rmstory-opensuse-tumbleweed. Bakes in every
+# dependency packaging/build-rpm.sh needs, on the same distro the package
+# targets -- generated from (and must be kept in sync with) the combo
+# definition in ../../../.github/workflows/build-packages.yml.
+FROM opensuse/tumbleweed
+
+RUN zypper --non-interactive install rpm-build python3 python3-devel python3-setuptools python3-pip python3-pytest python3-PyYAML tar git && \
+    zypper clean --all

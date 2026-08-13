@@ -316,3 +316,17 @@ The CLI's `--engine` flag (see `## CLI` above) does exactly this
 automatically for `extract`/`translate`, so most of the time you won't
 need to call `translate_text` by hand at all — it's there for callers
 embedding rmstory as a library.
+
+## Distro packages
+
+Native `.deb` (Debian/Ubuntu) and RPM (Fedora/RHEL, openSUSE Tumbleweed,
+openSUSE Leap 16) packages build from `packaging/` — see
+`packaging/README.md` for how, including why openSUSE Leap 15 isn't
+supported (its versioned Python package family has no PyYAML — Leap 16's
+default Python is already current, so it doesn't hit this).
+`.github/workflows/build-packages.yml` builds all four on every push and
+uploads them as workflow artifacts.
+Every package correctly declares `python3-multilang` as a runtime
+dependency, but multilang-lib isn't published as a native package by any
+distro yet, so install it (`pip install -e` from its own checkout — see
+`## Install` above) alongside the `.deb`/RPM until it is.
