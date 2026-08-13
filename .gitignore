@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.ruff_cache/
+
+# Local test/example scratch data (e.g. storage roots created by running
+# examples or the CLI by hand)
+example-strings/
+example-stories/
+rmstory-stories/
+*.sqlite3
+*.db
+
+# Editors / OS / local tooling
+.DS_Store
+.vscode/
+.idea/
+*.swp

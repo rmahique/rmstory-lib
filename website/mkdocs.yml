@@ -1,0 +1,62 @@
+# NOTE: this repo has no git remote configured yet (unlike multilang-lib,
+# which this is modeled on). site_url/repo_url below assume it'll be
+# published as rmahique/rmstory-lib, matching multilang-lib's own org/
+# naming -- update both, and the pages.yml workflow needs nothing else
+# once Settings -> Pages -> Source is set to "GitHub Actions" on the real
+# repo.
+
+site_name: rmstory
+site_description: >-
+  Usage examples for rmstory — translating and recombining stories
+  authored as tagged spans in markdown/HTML files.
+site_url: https://rmahique.github.io/rmstory-lib/
+repo_url: https://github.com/rmahique/rmstory-lib
+repo_name: rmahique/rmstory-lib
+edit_uri: edit/main/website/docs/
+
+docs_dir: docs
+
+nav:
+  - Home: index.md
+  - CLI: cli.md
+  - Python: python.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.top
+    - content.code.copy
+    - content.tabs.link
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+# This site is *usage examples only* -- it deliberately doesn't mirror
+# requisites.md (the spec) or README.md's full detail (install, every CLI
+# flag, all six translation engines). See those in the repo for that.
+# The Python page's code block is copied verbatim from
+# examples/basic_usage.py, a real file the pages.yml workflow runs as a
+# build-time sanity check before the site is even generated -- if you
+# change that file, update python.md in the same change.

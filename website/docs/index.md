@@ -1,0 +1,63 @@
+# rmstory
+
+Translates and recombines stories authored as tagged `<span>`s in
+markdown/HTML files:
+
+```html
+<span lang="en" id="ch1.greeting">Hello, traveler.</span>
+<span lang="en" id="ch1.hero-name" no>Aldric</span>
+<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor was the villain all along.</span>
+```
+
+`lang` marks text as translatable, `no` marks it invariant across
+stories, and `hist="<story-id>"` marks which story a piece of text
+belongs to. Translations are stored via
+[multilang-lib](https://github.com/rmahique/multilang-lib); a story is a
+lightweight ordered-id index layered on top, not a second content store.
+
+This site is usage examples only. For the full CLI reference, all six
+translation engines (`gemini`, `deepl`, `google-translate`,
+`microsoft-translator`, `libretranslate`, `baidu`), and install/test
+instructions, see the [GitHub repo](https://github.com/rmahique/rmstory-lib)
+— its `README.md` and `requisites.md` (the spec this implementation
+follows).
+
+## The same result, two ways
+
+=== "CLI"
+
+    ```bash
+    export MULTILANG_DB_BACKEND=filesystem
+    export MULTILANG_DB_PATH=./example-strings
+
+    rmstory extract examples/basic_usage.md --stories-dir ./rmstory-stories
+    rmstory story examples/basic_usage.md --story villain-arc --stories-dir ./rmstory-stories
+    # -> The mayor was the villain all along.
+    ```
+
+=== "Python"
+
+    ```python
+    from rmstory.run import resolve_run
+    from rmstory.storage import stories, translations
+    from rmstory import render
+
+    conn = translations.connect("filesystem", path="./example-strings")
+    spans = resolve_run(["examples/basic_usage.md"])
+
+    for span in spans:
+        if span.translatable and span.language:
+            translations.store(conn, span.id, span.language, span.content)
+
+    stories.merge("./rmstory-stories", "villain-arc", ["ch1.reveal"])
+    ordered_ids = stories.load("./rmstory-stories", "villain-arc")
+    spans_by_id = {span.id: span for span in spans}
+    text, _missing = render.assemble_story(spans_by_id, ordered_ids)
+    print(text)
+    # -> The mayor was the villain all along.
+    ```
+
+See **[CLI](cli.md)** for the full extract → translate → story
+walkthrough (including the auto-translation `--engine` flag), and
+**[Python](python.md)** for the library API — copied verbatim from a
+real, runnable example the site's own build checks before publishing.
