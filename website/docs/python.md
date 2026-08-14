@@ -2,6 +2,9 @@
 
 ## Install
 
+Quick setup to follow this walkthrough from a checkout. For the native
+`.deb`/RPM package instead, see the main repo's `README.md` `## Install`.
+
 ```bash
 git clone https://github.com/rmahique/multilang-lib.git
 pip install -e multilang-lib/python   # multilang-lib isn't on PyPI

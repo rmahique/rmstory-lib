@@ -4,10 +4,18 @@
 # Settings -> Pages -> Source: "GitHub Actions" (not committed here --
 # that setting lives in the repo, not in a file).
 #
-# multilang-lib isn't on PyPI, so it's checked out and installed the way
-# its own documentation does (clone, then `pip install -e .` from its
-# python/ directory) -- not via pip's own git-URL installer, which in
-# testing produced an inconsistent build from the same commit.
+# rmstory is installed the way an end user actually gets it: as its own
+# native .deb, built the documented way (packaging/README.md) in a
+# matching Debian bookworm container, then installed on this runner
+# (ubuntu-latest is Debian-derived, so a bookworm-built .deb installs
+# here directly) -- not `pip install -e`. multilang-lib is a separate
+# project rmstory merely depends on at runtime -- this workflow doesn't
+# check out or build it; it downloads multilang-lib's own published
+# release asset (https://github.com/rmahique/multilang-lib/releases)
+# and installs that, the same way any real distro package would be
+# consumed if one were in a live apt repo. mkdocs/mkdocs-material stay a
+# plain pip install (website/requirements.txt): doc-build tooling, not
+# part of either project's own packaging.
 #
 # website/python.md's code block is copied verbatim from
 # examples/basic_usage.py -- this workflow actually runs that script
@@ -24,6 +32,7 @@ on:
       - "website/**"
       - "examples/**"
       - "rmstory/**"
+      - "packaging/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -43,23 +52,50 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: rmstory-lib
-      - uses: actions/checkout@v7
-        with:
-          repository: rmahique/multilang-lib
-          path: multilang-lib
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - run: pip install -e multilang-lib/python
-      - run: pip install -e rmstory-lib
-      - run: pip install -r rmstory-lib/website/requirements.txt
+
+      - name: Build rmstory's own .deb (packaging/build-deb.sh)
+        run: |
+          docker build -t rmstory-deb -f rmstory-lib/packaging/docker/Dockerfile.debian-bookworm rmstory-lib/packaging/docker
+          docker run --rm -v "$PWD:/workspace" -w /workspace/rmstory-lib rmstory-deb packaging/build-deb.sh
+
+      # multilang-lib's own release doesn't publish a fixed-name asset
+      # (each build's filename embeds its dated version), so the matching
+      # one is looked up by name pattern against the latest release
+      # rather than a hardcoded URL that would go stale the moment
+      # multilang-lib cuts a new one.
+      - name: Download multilang-lib's own published .deb (its real release asset)
+        run: |
+          ASSET_URL="$(curl -fsSL https://api.github.com/repos/rmahique/multilang-lib/releases/latest \
+            | jq -r '.assets[] | select(.name | test("^python-debian-bookworm-python3-multilang_.*\\.deb$")) | .browser_download_url')"
+          test -n "$ASSET_URL"
+          curl -fsSL -o multilang-python3-multilang.deb "$ASSET_URL"
+
+      # Real dependency resolution, no workaround needed: multilang-lib's
+      # own package installs first, so rmstory's `Depends: python3-multilang`
+      # is genuinely satisfied by the time its .deb is installed right after.
+      - name: Install both packages on the runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-yaml
+          sudo dpkg -i multilang-python3-multilang.deb
+          sudo dpkg -i ./*.deb
+
+      # A venv, not a bare pip install: ubuntu-latest's system python3 is
+      # externally-managed (PEP 668). --system-site-packages is what
+      # makes rmstory/multilang (both dpkg-installed above) visible to
+      # it; this venv only adds mkdocs on top.
+      - name: Set up a venv for the doc-build tooling
+        run: python3 -m venv --system-site-packages .venv-docs
+      - run: .venv-docs/bin/pip install -r rmstory-lib/website/requirements.txt
+
       - name: Run the example (fails the build if website/python.md's source drifts from reality)
-        run: PYTHONPATH=rmstory-lib python3 rmstory-lib/examples/basic_usage.py
+        run: .venv-docs/bin/python3 rmstory-lib/examples/basic_usage.py
+
       # -d (site_dir) resolves relative to the config file's own directory
       # (website/), not the shell's cwd -- same as docs_dir. An absolute
       # path sidesteps that ambiguity instead of relying on where mkdocs
       # happens to land it.
-      - run: mkdocs build --strict -f rmstory-lib/website/mkdocs.yml -d "$GITHUB_WORKSPACE/site-build"
+      - run: .venv-docs/bin/mkdocs build --strict -f rmstory-lib/website/mkdocs.yml -d "$GITHUB_WORKSPACE/site-build"
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site-build

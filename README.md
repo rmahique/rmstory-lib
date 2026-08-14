@@ -31,14 +31,48 @@ ordered list of `id`s, where list order is narrative order. See
 
 ## Install
 
-multilang-lib isn't on PyPI. Install it the way its own documentation
-does — clone it, then `pip install -e .` from its `python/` directory:
+Native package for your distro, built from `packaging/` — see
+`packaging/README.md` for the full per-distro command list (`.deb` for
+Debian/Ubuntu, RPM for Fedora/RHEL, openSUSE Tumbleweed, openSUSE
+Leap 16). multilang-lib isn't built here — install its own package from
+[its releases](https://github.com/rmahique/multilang-lib/releases)
+(asset named `python-<distro>-python3-multilang_<version>.<deb|rpm>`).
+No release covers openSUSE Leap 16 yet; use the pip setup below for
+that combination.
 
 ```bash
-git clone https://github.com/rmahique/multilang-lib.git
-pip install -e multilang-lib/python
+# multilang-lib (Debian example -- pick the matching asset for your distro)
+curl -LO https://github.com/rmahique/multilang-lib/releases/download/1.0/python-debian-bookworm-python3-multilang_0.1.0%2B20260809-1_all.deb
+sudo dpkg -i python-debian-bookworm-python3-multilang_*.deb
 
-pip install -e ".[dev]"      # + pytest, ruff
+# rmstory itself
+git clone https://github.com/rmahique/rmstory-lib.git
+docker build -t rmstory-deb -f rmstory-lib/packaging/docker/Dockerfile.debian-bookworm rmstory-lib/packaging/docker
+docker run --rm -v "$(pwd):/workspace" -w /workspace/rmstory-lib rmstory-deb packaging/build-deb.sh
+sudo dpkg -i rmstory-lib/*.deb
+sudo apt-get install -y python3-yaml
+```
+
+RPM: swap `Dockerfile.debian-bookworm`/`build-deb.sh` for the matching
+Dockerfile/`build-rpm.sh` pair (`packaging/README.md` has the full
+table), `dpkg -i` for `rpm -i`/`zypper install ./*.rpm`, and the `.deb`
+asset for the matching `python-<distro>-python3-multilang_*.rpm` one.
+
+### Contributor / live-editing setup
+
+To edit rmstory itself and run the test suite against your changes
+immediately, without rebuilding a package on every edit, use an editable
+pip install instead — the same convention multilang-lib's own README
+uses for its own contributors:
+
+```bash
+git clone https://github.com/rmahique/rmstory-lib.git
+cd rmstory-lib
+
+git clone https://github.com/rmahique/multilang-lib.git ../multilang-lib
+pip install -e ../multilang-lib/python
+
+pip install -e ".[dev]"      # rmstory itself, + pytest, ruff
 pytest tests/ -v
 ```
 
@@ -287,8 +321,7 @@ export LIBRETRANSLATE_API_KEY=...                 # only if your instance requir
 **baidu** — worth it specifically for Chinese-language content. Its auth
 is a different shape from every other engine here: an APPID + secret key
 pair, with each request signed as `md5(appid + query + salt +
-secret_key)` rather than a bearer token — that's the integration cost
-flagged when this engine was proposed. Both the free ("Personal") and
+secret_key)` rather than a bearer token. Both the free ("Personal") and
 paid tiers use this same pair. Its language codes also aren't bare ISO
 639-1 for everything (Japanese is `jp`, Korean is `kor`, ...); rmstory
 maps the common cases and passes the rest through unchanged.
@@ -326,7 +359,8 @@ supported (its versioned Python package family has no PyYAML — Leap 16's
 default Python is already current, so it doesn't hit this).
 `.github/workflows/build-packages.yml` builds all four on every push and
 uploads them as workflow artifacts.
-Every package correctly declares `python3-multilang` as a runtime
-dependency, but multilang-lib isn't published as a native package by any
-distro yet, so install it (`pip install -e` from its own checkout — see
-`## Install` above) alongside the `.deb`/RPM until it is.
+Every package declares `python3-multilang` as a runtime dependency.
+Install the matching package from
+[multilang-lib's releases](https://github.com/rmahique/multilang-lib/releases)
+alongside rmstory's (see `## Install` above). No release covers openSUSE
+Leap 16 yet; use the pip setup there instead.

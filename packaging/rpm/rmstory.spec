@@ -78,12 +78,11 @@ Requires:       %{suse_py_pkg}-PyYAML
 Requires:       python3
 Requires:       python3-pyyaml
 %endif
-# multilang-lib isn't packaged by any distro yet -- this Requires reflects
-# what a real deployment needs (python3-multilang, once multilang-lib's
-# own packaging pipeline publishes it for the same distro), same
-# reasoning as ../debian/control's Depends. %%check below doesn't assume
-# it's actually installed in *this* build environment -- see the comment
-# there.
+# multilang-lib publishes its own package per distro as a release asset
+# (github.com/rmahique/multilang-lib/releases), not through a live repo
+# -- this Requires (python3-multilang) reflects a real deployment's
+# need, same reasoning as ../debian/control's Depends. %%check below
+# doesn't assume it's actually installed in *this* build environment.
 Requires:       python3-multilang
 
 %description

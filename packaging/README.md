@@ -50,22 +50,17 @@ comment on `leap_versioned_python` for the full mechanism. Computed, not
 hardcoded, so a future Leap 16.x point release shipping a newer default
 python3 doesn't silently break this.
 
-## multilang-lib is a build-time-only dependency here
+## multilang-lib isn't baked into the build images
 
-Every built package's runtime `Depends`/`Requires` correctly lists
-`python3-multilang` — that's the real, correct distro-packaging way to
-express "this needs multilang-lib importable to run." But multilang-lib
-isn't published as a native package by any distro yet, so it isn't baked
-into these build images either. `debian/rules` and `rpm/rmstory.spec`'s
-`%check` both handle this the same way: run the test suite if `multilang`
-happens to be importable, otherwise skip with a clear message rather than
-failing the whole package build over a dependency the *installed*
-package correctly declares but this build container doesn't necessarily
-provide. Verified for real (see below) — a build with multilang
-unavailable skips tests and still produces a working package; the
-package's own payload was confirmed to run correctly once multilang is
-present, by hand-installing it alongside the built `.deb` in a
-throwaway container.
+Every built package's `Depends`/`Requires` lists `python3-multilang`.
+multilang-lib publishes its own package per distro as a release asset
+(https://github.com/rmahique/multilang-lib/releases), but not for
+openSUSE Leap 16 yet, and none of it is baked into `docker/`'s build
+images. `debian/rules` and `rpm/rmstory.spec`'s `%check` run the test
+suite if `multilang` is importable, otherwise skip with a message —
+verified both ways: a build with multilang unavailable skips tests and
+still produces a working package; the package's own payload runs
+correctly once multilang is installed alongside it.
 
 ## Debian / Ubuntu
 
@@ -127,6 +122,9 @@ is)" above for why.
   (Debian) instead of a bare `podman run`, and go through your normal
   OBS/COPR/PPA signing flow rather than `rpmbuild`/`dpkg-buildpackage`
   directly.
-- Once multilang-lib publishes its own native packages, add its repo (or
-  a checked-out build of it) to these build images so `%check`/
-  `dh_auto_test` actually runs instead of skipping.
+- multilang-lib's packages are release assets, not a live apt/zypper
+  repo, so `docker/`'s build images still can't `apt install
+  python3-multilang` directly. Once it has a real repo, point these
+  images at it and drop the `%check`/`dh_auto_test` skip. Until then,
+  fetch the matching release asset into the build image if you want
+  tests to actually run — never check out multilang-lib's source.

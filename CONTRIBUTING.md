@@ -2,7 +2,12 @@
 
 ## Before you start
 
-multilang-lib isn't on PyPI. Install it the way its own documentation.
+For actually editing rmstory and iterating on tests, use the
+contributor/live-editing setup in `README.md`'s `## Install` — an
+editable pip install of both multilang-lib and rmstory, so changes take
+effect immediately without rebuilding a package. The native `.deb`/RPM
+packages documented in that same section (and `packaging/README.md`) are
+for *installing* rmstory, not for developing it.
 
 
 ## Before opening a PR
@@ -54,7 +59,11 @@ seventh:
    dependency a hard dependency of rmstory itself, or bundle it into
    another engine's extra.
 9. Document it in `README.md`'s `## Machine translation engines` section:
-   env vars, credential shape, whether it needs an extra installed.
+   env vars, credential shape, whether it needs an extra installed. Also
+   update every other place the engine list/count is duplicated:
+   `website/docs/cli.md`'s "Six engines are built in: ..." and
+   `website/docs/index.md`'s "all six translation engines (...)" intro
+   line — both will read wrong otherwise.
 
 ## Changing `lang`/`hist`/`no` behavior
 

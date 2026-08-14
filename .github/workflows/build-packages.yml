@@ -22,11 +22,10 @@
 # always has git and tar, before the container is even built.
 #
 # multilang-lib (this package's one runtime dependency) isn't baked into
-# these images -- see packaging/README.md's "multilang-lib is a
-# build-time-only dependency here" -- so %check/dh_auto_test skip
-# gracefully instead of failing the build; the packages this workflow
-# produces are real and installable, just untested-at-build-time until
-# multilang-lib publishes its own native packages.
+# these images -- see packaging/README.md's "multilang-lib isn't baked
+# into the build images" -- so %check/dh_auto_test skip gracefully
+# instead of failing the build. The packages this workflow produces are
+# real and installable, just untested-at-build-time.
 
 name: Build packages
 
