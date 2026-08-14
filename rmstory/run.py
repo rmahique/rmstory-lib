@@ -27,6 +27,9 @@ class ResolvedSpan:
     tag_text: str
     content_start: int
     content_end: int
+    tag_end: int
+    end_tag_text: str
+    parent_id: Optional[str]
 
 
 def resolve_run(paths, recursive=True):
@@ -53,6 +56,17 @@ def resolve_run(paths, recursive=True):
     for path in discovery.discover(paths, recursive=recursive):
         for span in parser.scan_file(path):
             span_id = validation.validate_id(span.id, path, span.line)
+            # Parents are validated before their own nested children reach
+            # this loop (sorted by tag_start), so re-validating parent_id
+            # here just re-applies the same normalization (e.g. lowercasing)
+            # already done for the parent's own `id` -- without this, a
+            # mixed-case id would make a child's parent_id not match its
+            # parent's actual (normalized) ResolvedSpan.id.
+            parent_id = (
+                validation.validate_id(span.parent_id, path, span.line)
+                if span.parent_id is not None
+                else None
+            )
             lang = validation.validate_lang(span.lang, path, span.line)
 
             try:
@@ -79,6 +93,9 @@ def resolve_run(paths, recursive=True):
                     tag_text=span.tag_text,
                     content_start=span.content_start,
                     content_end=span.content_end,
+                    tag_end=span.tag_end,
+                    end_tag_text=span.end_tag_text,
+                    parent_id=parent_id,
                 )
             )
 

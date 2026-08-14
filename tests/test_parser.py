@@ -38,14 +38,91 @@ def test_hist_without_value_hard_fails(tmp_path):
         scan_file(path)
 
 
-def test_nested_tagged_span_hard_fails(tmp_path):
+def test_nested_tagged_span_becomes_its_own_span_with_placeholder_in_parent(tmp_path):
     path = _write(
         tmp_path,
         "a.md",
-        '<span lang="es" id="outer"><span lang="en" id="inner">x</span></span>',
+        '<span lang="en" id="outer">Once upon a time, '
+        '<span no id="hero-name">Aldric</span> ventured forth.</span>',
+    )
+    spans = scan_file(path)
+    assert len(spans) == 2
+
+    outer = next(s for s in spans if s.id == "outer")
+    inner = next(s for s in spans if s.id == "hero-name")
+
+    assert outer.parent_id is None
+    assert outer.content == 'Once upon a time, <span id="hero-name"/> ventured forth.'
+    assert inner.parent_id == "outer"
+    assert inner.content == "Aldric"
+    assert inner.no is True
+
+
+def test_nested_span_appears_after_parent_in_document_order(tmp_path):
+    # A nested span's closing tag is hit before its parent's -- scan_file
+    # must still return document (opening-tag) order, so a parent always
+    # precedes its own nested children.
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer">a <span no id="inner">b</span> c</span>',
+    )
+    spans = scan_file(path)
+    assert [s.id for s in spans] == ["outer", "inner"]
+
+
+def test_doubly_nested_span(tmp_path):
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="a">x'
+        '<span no id="b">y<span no id="c">z</span></span>'
+        "</span>",
+    )
+    spans = scan_file(path)
+    by_id = {s.id: s for s in spans}
+    assert by_id["a"].parent_id is None
+    assert by_id["a"].content == 'x<span id="b"/>'
+    assert by_id["b"].parent_id == "a"
+    assert by_id["b"].content == 'y<span id="c"/>'
+    assert by_id["c"].parent_id == "b"
+    assert by_id["c"].content == "z"
+
+
+def test_nested_span_without_id_hard_fails(tmp_path):
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer">a <span no>b</span> c</span>',
     )
     with pytest.raises(ValidationError):
         scan_file(path)
+
+
+def test_unclosed_nested_span_hard_fails(tmp_path):
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer">a <span no id="inner">b</span>',
+    )
+    with pytest.raises(ValidationError):
+        scan_file(path)
+
+
+def test_nested_span_sibling_of_untracked_tag(tmp_path):
+    # An untracked tag (<b>) at the same level as a nested tracked span
+    # must not confuse the per-frame untracked-depth tracking.
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer"><b>bold</b> <span no id="inner">x</span></span>',
+    )
+    spans = scan_file(path)
+    by_id = {s.id: s for s in spans}
+    assert by_id["inner"].content == "x"
+    # the untracked <b>...</b> markup itself isn't preserved in content
+    # (pre-existing limitation for untracked nested tags, unchanged here)
+    assert by_id["outer"].content == 'bold <span id="inner"/>'
 
 
 def test_non_utf8_file_hard_fails(tmp_path):

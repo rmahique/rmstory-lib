@@ -12,8 +12,7 @@ Text is tagged directly in the source document:
 
 ```html
 <span lang="en" id="ch1.greeting">Hello, traveler.</span>
-<span lang="en" id="ch1.hero-name" no>Aldric</span>
-<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor was the villain all along.</span>
+<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor — <span no id="ch1.hero-name">Aldric</span>'s own uncle — was the villain all along.</span>
 ```
 
 - `lang` marks text as translatable (`lang="nolang"` marks it as exempt).
@@ -21,6 +20,12 @@ Text is tagged directly in the source document:
 - `hist="<story-id>"` marks text as belonging to a story; if `lang` is
   omitted, the language is inherited from the nearest preceding
   `lang`-tagged span in the whole scan (files in lexical path order).
+- A span can nest inside another span — here, the invariant name
+  `ch1.hero-name` inside the translatable, story-tracked `ch1.reveal`.
+  Each nested span is a full span in its own right (own id, own rules,
+  own translation) — see `requisites.md` `=== Nesting` for exactly how
+  the parent's own content represents it, and how that gets resolved
+  back out at render time.
 
 Translations are stored via
 [multilang-lib](https://github.com/rmahique/multilang-lib), keyed by
@@ -90,7 +95,9 @@ document, so its `--out` (also optional, stdout otherwise) names a file,
 not a directory — it doesn't rewrite the source files, it assembles a
 story's entries from whatever the source currently says, in story order.
 
-`extract` always stores each tagged span's own-language source text.
+`extract` always stores each *translatable* tagged span's own-language
+source text — a span with no `lang` and no inherited one (e.g. a bare
+`no` span with nothing to translate) gets no row at all, on purpose.
 Producing a translation into another language is otherwise a separate
 row someone (or some other tool) has to add, and by default `translate`
 fails loudly — naming the exact file/line/id — if one is missing, rather
@@ -105,8 +112,8 @@ translation that's already stored, however it got there:
   stored translation is always used as-is; `--engine` never re-translates
   or overwrites it.
 - On `extract`, pair `--engine` with one or more `--to <lang>` to also
-  populate target-language rows for every scanned id that doesn't have
-  one yet, right when you extract the source text.
+  populate target-language rows for every scanned *translatable* id that
+  doesn't have one yet, right when you extract the source text.
 
 Either way, the stored row is tagged `updated_by="rmstory.engines:<name>"`
 so it's identifiable later as unreviewed machine output (`status` stays
@@ -126,15 +133,14 @@ rmstory translate examples/basic_usage.md --to es --engine gemini
 
 <span lang="en" id="ch1.greeting">Hello, traveler.</span>
 
-<span lang="en" id="ch1.hero-name" no>Aldric</span>
-
-<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor was the villain all along.</span>
+<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor — <span no id="ch1.hero-name">Aldric</span>'s own uncle — was the villain all along.</span>
 ```
 
-Three tagged spans: an ordinary translatable greeting, a proper name
-marked `no` (translatable, but invariant across stories — a name doesn't
-change depending which story it appears in), and a plot beat marked as
-belonging to the `villain-arc` story.
+Three tagged spans: an ordinary translatable greeting, a plot beat
+belonging to the `villain-arc` story, and — nested inside that plot
+beat — a proper name marked `no` (invariant across stories *and*, having
+no `lang` of its own, never translated at all; it stays "Aldric" in every
+rendered language).
 
 Point the CLI at a filesystem-backed translation store and validate first:
 
@@ -145,24 +151,27 @@ $ rmstory validate examples/basic_usage.md
 3 tagged span(s) in 1 file(s), 0 warning(s)
 ```
 
-`extract` seeds the translation store (one row per span, in English —
-`extract` never invents translations, see above) and updates every story
-index the scanned spans reference:
+`extract` seeds the translation store (one row per *translatable* span,
+in English — `extract` never invents translations, see above) and
+updates every story index the scanned spans reference. `ch1.hero-name`
+doesn't get a row: nested and non-`lang` spans still count toward the
+span total above, but aren't translatable on their own:
 
 ```console
 $ rmstory extract examples/basic_usage.md --stories-dir ./rmstory-stories
-extracted 3 translatable span(s), updated 1 story index(es)
+extracted 2 translatable span(s), updated 1 story index(es)
 $ cat rmstory-stories/villain-arc.yaml
 - ch1.reveal
 ```
 
 `story` assembles a story from whatever the source currently holds for
 each entry, in the order the index lists them — no translation needed for
-this, it just reads current content:
+this, it just reads current content, resolving `ch1.hero-name`'s nested
+content into place:
 
 ```console
 $ rmstory story examples/basic_usage.md --story villain-arc --stories-dir ./rmstory-stories
-The mayor was the villain all along.
+The mayor — Aldric's own uncle — was the villain all along.
 ```
 
 `translate` needs a translation on file for every translatable span
@@ -172,30 +181,40 @@ missing — rather than shipping a document that's silently half-English:
 ```console
 $ rmstory translate examples/basic_usage.md --to es
 error: .../rmstory-lib/examples/basic_usage.md:3: no 'es' translation stored for id 'ch1.greeting'
-error: .../rmstory-lib/examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.hero-name'
-error: .../rmstory-lib/examples/basic_usage.md:7: no 'es' translation stored for id 'ch1.reveal'
+error: .../rmstory-lib/examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.reveal'
 ```
 
-(Paths in error messages are resolved to absolute — shortened above for
-readability; yours will show your own checkout's path.)
+(`ch1.hero-name` isn't listed — it was never translatable, so `translate`
+never looks for a translation of it. Paths in error messages are resolved
+to absolute — shortened above for readability; yours will show your own
+checkout's path.)
 
 Translations are written the same way any multilang-lib caller writes
 one — directly through multilang-lib, through rmstory's thin wrapper
 around it, or machine-translated via `rmstory.engines` (below) and then
-stored the same way:
+stored the same way. `ch1.reveal`'s own translation must preserve
+`ch1.hero-name`'s `<span id="ch1.hero-name"/>` placeholder unchanged —
+`rmstory translate` substitutes the nested span's own (here, untranslated)
+rendering there at render time:
 
 ```console
 $ python3 -c "
 from rmstory.storage import translations
 conn = translations.connect()
 translations.store(conn, 'ch1.greeting', 'es', 'Hola, viajero.')
-translations.store(conn, 'ch1.hero-name', 'es', 'Aldric')
-translations.store(conn, 'ch1.reveal', 'es', 'El alcalde era el villano todo el tiempo.')
+translations.store(
+    conn,
+    'ch1.reveal',
+    'es',
+    'El alcalde — tío de <span id=\"ch1.hero-name\"/> — era el villano después de todo.',
+)
 "
 ```
 
-Now `translate` succeeds, and everything outside the three spans —
-`# Chapter One`, the blank lines — is untouched:
+Now `translate` succeeds. Everything outside the translated spans —
+`# Chapter One`, the blank lines — is untouched, and `ch1.hero-name`
+comes through as "Aldric" unchanged, in its original tag, even though
+the sentence around it is now Spanish:
 
 ```console
 $ rmstory translate examples/basic_usage.md --to es
@@ -203,9 +222,7 @@ $ rmstory translate examples/basic_usage.md --to es
 
 <span lang="es" id="ch1.greeting">Hola, viajero.</span>
 
-<span lang="es" id="ch1.hero-name" no>Aldric</span>
-
-<span lang="es" id="ch1.reveal" hist="villain-arc">El alcalde era el villano todo el tiempo.</span>
+<span lang="es" id="ch1.reveal" hist="villain-arc">El alcalde — tío de <span no id="ch1.hero-name">Aldric</span> — era el villano después de todo.</span>
 ```
 
 ## Machine translation engines

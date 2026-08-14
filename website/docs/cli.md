@@ -23,10 +23,13 @@ pip install -e .
 
 <span lang="en" id="ch1.greeting">Hello, traveler.</span>
 
-<span lang="en" id="ch1.hero-name" no>Aldric</span>
-
-<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor was the villain all along.</span>
+<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor — <span no id="ch1.hero-name">Aldric</span>'s own uncle — was the villain all along.</span>
 ```
+
+`ch1.hero-name` nests inside `ch1.reveal` — an invariant name (`no`, no
+`lang` of its own) embedded in an otherwise translatable sentence. Each
+nested span is still a full span in its own right; see the main repo's
+`requisites.md` `=== Nesting` for how it's represented and resolved.
 
 Point the CLI at a filesystem-backed translation store and validate
 first:
@@ -39,32 +42,34 @@ $ rmstory validate examples/basic_usage.md
 ```
 
 `extract` seeds the translation store and updates every story index the
-scanned spans reference:
+scanned spans reference. `ch1.hero-name` isn't translatable on its own
+(no `lang`), so it gets no row of its own:
 
 ```console
 $ rmstory extract examples/basic_usage.md --stories-dir ./rmstory-stories
-extracted 3 translatable span(s), updated 1 story index(es)
+extracted 2 translatable span(s), updated 1 story index(es)
 $ cat rmstory-stories/villain-arc.yaml
 - ch1.reveal
 ```
 
 `story` assembles a story from whatever the source currently holds for
-each entry, in the order the index lists them:
+each entry, in the order the index lists them, resolving
+`ch1.hero-name`'s nested content into place:
 
 ```console
 $ rmstory story examples/basic_usage.md --story villain-arc --stories-dir ./rmstory-stories
-The mayor was the villain all along.
+The mayor — Aldric's own uncle — was the villain all along.
 ```
 
 `translate` needs a translation on file for every translatable span. By
 default, a missing one is a loud, specific failure rather than a
-document that's silently half-English:
+document that's silently half-English (`ch1.hero-name` isn't listed —
+it's never translated, so `translate` never looks for one):
 
 ```console
 $ rmstory translate examples/basic_usage.md --to es
 error: .../examples/basic_usage.md:3: no 'es' translation stored for id 'ch1.greeting'
-error: .../examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.hero-name'
-error: .../examples/basic_usage.md:7: no 'es' translation stored for id 'ch1.reveal'
+error: .../examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.reveal'
 ```
 
 ## Auto-translating with `--engine`
@@ -95,7 +100,9 @@ each one's credentials and whether it needs an extra installed.
 
 Once translations are on file, `translate` renders a copy with every
 translated span spliced in at its exact position — everything else in
-the file (`# Chapter One`, the blank lines) untouched:
+the file (`# Chapter One`, the blank lines) untouched, and
+`ch1.hero-name` coming through as "Aldric" unchanged even though the
+sentence around it is now Spanish:
 
 ```console
 $ rmstory translate examples/basic_usage.md --to es
@@ -103,7 +110,5 @@ $ rmstory translate examples/basic_usage.md --to es
 
 <span lang="es" id="ch1.greeting">Hola, viajero.</span>
 
-<span lang="es" id="ch1.hero-name" no>Aldric</span>
-
-<span lang="es" id="ch1.reveal" hist="villain-arc">El alcalde era el villano todo el tiempo.</span>
+<span lang="es" id="ch1.reveal" hist="villain-arc">El alcalde — tío de <span no id="ch1.hero-name">Aldric</span> — era el villano después de todo.</span>
 ```

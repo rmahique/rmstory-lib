@@ -11,6 +11,15 @@ Each TaggedSpan also carries character offsets into the original file text
 (`tag_start`, `content_start`, `content_end`) so `render.py` can splice a
 replacement in without disturbing anything else in the document -- see
 that module for why this matters for `rmstory translate`.
+
+A tagged span may nest inside another tagged span (requisites.md
+`== Functioning Logic` `=== Nesting`). Each still becomes its own
+TaggedSpan (own id, own lang/hist/no, own offsets) with `parent_id` set to
+the enclosing span's id; in the *parent's* own `content`, the nested
+span's raw markup is replaced by a placeholder (`<span id="...">`,
+self-closing) that `render.py` resolves at render time. This is what lets
+a nested span be translated/rendered independently of whatever the
+parent's own translation says.
 """
 
 from dataclasses import dataclass
@@ -35,6 +44,9 @@ class TaggedSpan:
     tag_text: str
     content_start: int
     content_end: int
+    tag_end: int
+    end_tag_text: str
+    parent_id: Optional[str]
 
 
 def _line_offsets(text):
@@ -45,15 +57,22 @@ def _line_offsets(text):
     return offsets
 
 
+def nested_placeholder(span_id):
+    """The self-closing placeholder a nested span's id is represented by
+    inside its parent's own `content` -- see render.py, which resolves
+    these back into the nested span's fully-rendered form at render time.
+    """
+    return '<span id="{}"/>'.format(span_id)
+
+
 class _SpanScanner(HTMLParser):
     def __init__(self, path, text):
         super().__init__(convert_charrefs=True)
         self.path = path
         self.spans = []
+        self._text = text
         self._line_offsets = _line_offsets(text)
-        self._open = None  # dict describing the currently tracked span, or None
-        self._nested_depth = 0  # depth of untracked tags inside the tracked span
-        self._buffer = []
+        self._stack = []  # frames for currently-open tracked spans, outermost first
 
     def _offset(self):
         line, col = self.getpos()
@@ -63,15 +82,42 @@ class _SpanScanner(HTMLParser):
         attrs_dict = dict(attrs)
         tracked = tag == "span" and any(key in attrs_dict for key in _TRACKED_ATTRS)
 
-        if self._open is not None:
+        if self._stack:
+            top = self._stack[-1]
             if tracked:
-                raise ValidationError(
-                    "nested tagged <span> inside another tagged <span> is not "
-                    "supported -- flatten to sibling spans",
-                    self.path,
-                    self.getpos()[0],
+                line, _ = self.getpos()
+                if "lang" in attrs_dict and not attrs_dict["lang"]:
+                    raise ValidationError("lang attribute requires a value", self.path, line)
+                if "hist" in attrs_dict and not attrs_dict["hist"]:
+                    raise ValidationError(
+                        "hist attribute requires a value (the story id)", self.path, line
+                    )
+                nested_id = attrs_dict.get("id")
+                if not nested_id:
+                    raise ValidationError(
+                        "nested tagged <span> requires an id attribute", self.path, line
+                    )
+                top["buffer"].append(nested_placeholder(nested_id))
+
+                tag_text = self.get_starttag_text()
+                tag_start = self._offset()
+                self._stack.append(
+                    {
+                        "line": line,
+                        "id": nested_id,
+                        "lang": attrs_dict.get("lang"),
+                        "hist": attrs_dict.get("hist"),
+                        "no": "no" in attrs_dict,
+                        "tag_start": tag_start,
+                        "tag_text": tag_text,
+                        "content_start": tag_start + len(tag_text),
+                        "parent_id": top["id"],
+                        "buffer": [],
+                        "nested_depth": 0,
+                    }
                 )
-            self._nested_depth += 1
+                return
+            top["nested_depth"] += 1
             return
 
         if not tracked:
@@ -87,65 +133,85 @@ class _SpanScanner(HTMLParser):
 
         tag_text = self.get_starttag_text()
         tag_start = self._offset()
-        self._open = {
-            "line": line,
-            "id": attrs_dict.get("id"),
-            "lang": attrs_dict.get("lang"),
-            "hist": attrs_dict.get("hist"),
-            "no": "no" in attrs_dict,
-            "tag_start": tag_start,
-            "tag_text": tag_text,
-            "content_start": tag_start + len(tag_text),
-        }
-        self._buffer = []
+        self._stack.append(
+            {
+                "line": line,
+                "id": attrs_dict.get("id"),
+                "lang": attrs_dict.get("lang"),
+                "hist": attrs_dict.get("hist"),
+                "no": "no" in attrs_dict,
+                "tag_start": tag_start,
+                "tag_text": tag_text,
+                "content_start": tag_start + len(tag_text),
+                "parent_id": None,
+                "buffer": [],
+                "nested_depth": 0,
+            }
+        )
 
     def handle_endtag(self, tag):
-        if self._open is None:
+        if not self._stack:
             return
-        if self._nested_depth > 0:
-            self._nested_depth -= 1
+        top = self._stack[-1]
+        if top["nested_depth"] > 0:
+            top["nested_depth"] -= 1
             return
         if tag != "span":
             return
-        span = self._open
+        self._stack.pop()
+        content_end = self._offset()
+        # The closing tag's own raw text (">"-terminated, whatever its exact
+        # whitespace/casing) -- not just a hardcoded "</span>" -- so
+        # reassembling tag_text + content + end_tag_text is byte-exact.
+        tag_end = self._text.index(">", content_end) + 1
+        end_tag_text = self._text[content_end:tag_end]
         self.spans.append(
             TaggedSpan(
                 path=self.path,
-                line=span["line"],
-                id=span["id"],
-                lang=span["lang"],
-                hist=span["hist"],
-                no=span["no"],
-                content="".join(self._buffer),
-                tag_start=span["tag_start"],
-                tag_text=span["tag_text"],
-                content_start=span["content_start"],
-                content_end=self._offset(),
+                line=top["line"],
+                id=top["id"],
+                lang=top["lang"],
+                hist=top["hist"],
+                no=top["no"],
+                content="".join(top["buffer"]),
+                tag_start=top["tag_start"],
+                tag_text=top["tag_text"],
+                content_start=top["content_start"],
+                content_end=content_end,
+                tag_end=tag_end,
+                end_tag_text=end_tag_text,
+                parent_id=top["parent_id"],
             )
         )
-        self._open = None
-        self._buffer = []
 
     def handle_data(self, data):
-        if self._open is not None:
-            self._buffer.append(data)
+        if self._stack:
+            self._stack[-1]["buffer"].append(data)
 
 
 def scan_file(path):
     """
     Parse one file and return every tagged span it contains, in document
-    order.
+    order (a nested span is returned as its own entry immediately after
+    its content is fully parsed -- i.e. before its parent, since the
+    parent doesn't close until after its nested children do).
 
     Args:
         path: A Path to a UTF-8 encoded markdown/HTML file.
 
     Returns:
-        A list of TaggedSpan, in the order they appear in the file.
+        A list of TaggedSpan, in document order (by opening-tag position).
+        A nested span's *closing* tag is always hit before its parent's --
+        spans are sorted by `tag_start` rather than returned in that
+        closing-tag order, so a parent always precedes its own nested
+        children (and callers like run.py that track "the nearest
+        preceding lang-tagged span" see a parent's lang before a child
+        that needs to inherit it).
 
     Raises:
         ValidationError: If the file isn't valid UTF-8, a `lang`/`hist`
-            attribute is present without a value, or a tagged span is
-            nested inside another tagged span.
+            attribute is present without a value, a nested tagged span has
+            no `id`, or a tagged span is left unclosed.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -155,8 +221,8 @@ def scan_file(path):
     scanner = _SpanScanner(path, text)
     scanner.feed(text)
     scanner.close()
-    if scanner._open is not None:
+    if scanner._stack:
         raise ValidationError(
-            "unclosed tagged <span>", path, scanner._open["line"]
+            "unclosed tagged <span>", path, scanner._stack[-1]["line"]
         )
-    return scanner.spans
+    return sorted(scanner.spans, key=lambda span: span.tag_start)

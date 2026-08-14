@@ -23,6 +23,21 @@ def test_inheritance_across_files(tmp_path):
     assert reveal.story_id == "villain-arc"
 
 
+def test_nested_span_inherits_enclosing_parents_lang(tmp_path):
+    (tmp_path / "a.md").write_text(
+        '<span lang="es" id="para">Había una vez '
+        '<span hist="villain-arc" id="reveal">un giro</span> mas.</span>',
+        encoding="utf-8",
+    )
+
+    spans = resolve_run([tmp_path])
+    reveal = next(s for s in spans if s.id == "reveal")
+    assert reveal.parent_id == "para"
+    assert reveal.language == "es"
+    assert reveal.story_id == "villain-arc"
+    assert reveal.translatable is True
+
+
 def test_no_earlier_lang_hard_fails(tmp_path):
     (tmp_path / "a.md").write_text(
         '<span hist="villain-arc" id="reveal">Twist</span>', encoding="utf-8"

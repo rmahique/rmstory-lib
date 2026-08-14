@@ -5,13 +5,15 @@ markdown/HTML files:
 
 ```html
 <span lang="en" id="ch1.greeting">Hello, traveler.</span>
-<span lang="en" id="ch1.hero-name" no>Aldric</span>
-<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor was the villain all along.</span>
+<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor — <span no id="ch1.hero-name">Aldric</span>'s own uncle — was the villain all along.</span>
 ```
 
 `lang` marks text as translatable, `no` marks it invariant across
 stories, and `hist="<story-id>"` marks which story a piece of text
-belongs to. Translations are stored via
+belongs to. A span can nest inside another (here, the invariant name
+`ch1.hero-name` inside the translatable `ch1.reveal`) — each is still a
+full span in its own right, with its own rules and its own translation.
+Translations are stored via
 [multilang-lib](https://github.com/rmahique/multilang-lib); a story is a
 lightweight ordered-id index layered on top, not a second content store.
 
@@ -32,7 +34,7 @@ follows).
 
     rmstory extract examples/basic_usage.md --stories-dir ./rmstory-stories
     rmstory story examples/basic_usage.md --story villain-arc --stories-dir ./rmstory-stories
-    # -> The mayor was the villain all along.
+    # -> The mayor — Aldric's own uncle — was the villain all along.
     ```
 
 === "Python"
@@ -54,7 +56,7 @@ follows).
     spans_by_id = {span.id: span for span in spans}
     text, _missing = render.assemble_story(spans_by_id, ordered_ids)
     print(text)
-    # -> The mayor was the villain all along.
+    # -> The mayor — Aldric's own uncle — was the villain all along.
     ```
 
 See **[CLI](cli.md)** for the full extract → translate → story

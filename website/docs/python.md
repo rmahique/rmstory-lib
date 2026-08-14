@@ -100,16 +100,14 @@ PYTHONPATH=. python3 examples/basic_usage.py
 found 3 tagged span(s) in basic_usage.md
 
 villain-arc story:
-The mayor was the villain all along.
+The mayor — Aldric's own uncle — was the villain all along.
 
 partially translated:
 # Chapter One
 
 <span lang="es" id="ch1.greeting">Hola, viajero.</span>
 
-<span lang="en" id="ch1.hero-name" no>Aldric</span>
-
-<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor was the villain all along.</span>
+<span lang="en" id="ch1.reveal" hist="villain-arc">The mayor — <span no id="ch1.hero-name">Aldric</span>'s own uncle — was the villain all along.</span>
 
 rejected as expected: /tmp/.../bad.md:1: language_id 'not-a-valid-tag!!' is not a valid BCP 47 tag
 ```
