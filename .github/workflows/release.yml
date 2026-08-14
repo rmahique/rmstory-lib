@@ -1,0 +1,65 @@
+# Triggered by pushing a version tag (this repo's tags have no "v"
+# prefix, e.g. "1.0", not "v1.0"). Builds the same 4 packages
+# build-packages.yml builds on every push (via that file's
+# `workflow_call` trigger, so the matrix can't drift between the two),
+# then attaches every .deb/.rpm/.sha512 to a GitHub Release for that tag
+# -- a workflow-run artifact has no "latest" download URL and expires,
+# so it can't be what README.md's Install section points users at.
+#
+# Filenames are prefixed with their combo name (e.g.
+# opensuse-leap-16-python3-rmstory-...rpm) before upload: rpmbuild's
+# %{?dist} tag is empty on openSUSE, so the Tumbleweed and Leap 16 RPMs
+# for the same version build with identical filenames (verified locally
+# -- both produced exactly `python3-rmstory-0.1.0^<date>-1.noarch.rpm`)
+# and would silently overwrite each other once flattened into one
+# release's asset list without this.
+
+name: Release
+
+on:
+  push:
+    # Every tag, no shape restriction: this repo doesn't use tags for
+    # anything but releases, and GitHub Actions' tag-filter pattern
+    # language mixes glob (`*` = any characters) with regex-style
+    # quantifiers (`+` = one or more of the preceding character) in ways
+    # that are easy to get subtly wrong without a fast feedback loop to
+    # verify against (a `[0-9]+.[0-9]+*` pattern here previously matched
+    # tag `1.0` but silently failed to match `1.0.1` -- no Release run
+    # was even triggered). `tags: ["*"]` has no such ambiguity.
+    tags:
+      - "*"
+  # Lets an existing tag get a Release retroactively without re-pushing
+  # it -- pick the tag as the ref to run this workflow from (Actions tab
+  # -> Release -> Run workflow -> Use workflow from: that tag).
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-packages.yml
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: rmstory-*
+          path: dist-packages
+      - name: Prefix each file with its combo name to guarantee unique filenames
+        run: |
+          mkdir -p release-assets
+          for dir in dist-packages/rmstory-*/; do
+            combo="$(basename "$dir")"
+            combo="${combo#rmstory-}"
+            for f in "$dir"*; do
+              cp "$f" "release-assets/${combo}-$(basename "$f")"
+            done
+          done
+          ls -la release-assets/
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: release-assets/*
+          generate_release_notes: true
