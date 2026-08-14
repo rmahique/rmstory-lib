@@ -99,6 +99,48 @@ def test_nested_span_without_id_hard_fails(tmp_path):
         scan_file(path)
 
 
+def test_lenient_mode_allows_missing_nested_id(tmp_path):
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer">a <span no>b</span> c</span>',
+    )
+    spans = scan_file(path, strict=False)
+    outer = next(s for s in spans if s.id == "outer")
+    inner = next(s for s in spans if s.id is None)
+    assert inner.content == "b"
+    assert inner.parent_id == "outer"  # the *parent* has a real id
+    assert inner.parent_tag_start == outer.tag_start
+
+
+def test_lenient_mode_parent_tag_start_survives_missing_parent_id(tmp_path):
+    # When the *enclosing* span is also missing an id, parent_id can't
+    # identify it (nothing to put there) -- parent_tag_start still can,
+    # unambiguously, by position. This is what lets cli.py's auto-id
+    # pre-pass resolve a chain of several id-less nested levels in order.
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer">a <span no>b <span no>c</span></span></span>',
+    )
+    spans = scan_file(path, strict=False)
+    mid = next(s for s in spans if s.content.startswith("b"))
+    inner = next(s for s in spans if s.content == "c")
+    assert mid.id is None
+    assert inner.parent_id is None  # mid has no id, so this can't name it
+    assert inner.parent_tag_start == mid.tag_start  # but this still can
+
+
+def test_lenient_mode_still_hard_fails_on_other_errors(tmp_path):
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer">a <span no hist>b</span> c</span>',
+    )
+    with pytest.raises(ValidationError):
+        scan_file(path, strict=False)
+
+
 def test_unclosed_nested_span_hard_fails(tmp_path):
     path = _write(
         tmp_path,

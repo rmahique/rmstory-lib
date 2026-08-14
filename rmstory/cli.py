@@ -23,6 +23,14 @@ through unchanged.
 assembles those entries' current content, in story order, into one
 flattened document -- it does not rewrite the source files.
 
+`extract` is the one command that *does* rewrite source files unprompted:
+before its normal pass, it auto-assigns an id to every nested tagged span
+missing one (reusing an id from elsewhere in the run if the content
+matches, otherwise deriving `<parent-id>.<n>`) and writes it back into
+the source. A *top-level* span with no id is still a hard failure
+everywhere, including here -- there's no parent to derive from. See
+`_fill_missing_nested_ids`.
+
 `--engine <name>` (see rmstory.engines) is opt-in machine translation,
 never automatic. On `translate`, it only fills a translation that's
 missing -- an already-stored one (however it got there) is always used
@@ -37,11 +45,12 @@ later as unreviewed machine output (status stays multilang-lib's default,
 
 import argparse
 import os
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-from . import engines, render
+from . import discovery, engines, parser, render
 from .exceptions import RmstoryError, ValidationError
 from .run import resolve_run
 from .storage import stories, translations
@@ -84,10 +93,90 @@ def cmd_validate(args):
     return 0
 
 
+def _fill_missing_nested_ids(paths, recursive):
+    """
+    Auto-assign an id to every nested tagged span missing one, rewriting
+    the affected source files in place, before the real (strict) extract
+    pass runs -- so a document authored with an unlabeled nested span (a
+    common oversight) doesn't need a manual edit first.
+
+    A missing id is resolved by exact content match against another span
+    already discovered in this run (multilang-lib has no content-search
+    API, so "the database" isn't queryable this way -- only spans seen in
+    the current scan are candidates), preferring an id that already
+    exists; otherwise a fresh id is derived from the immediate parent's
+    id (`<parent>.1`, `<parent>.2`, ...). Processed in document order so a
+    parent missing its own id still gets one before its own children look
+    it up. A span whose parent is itself unresolved (e.g. a *top-level*
+    span with no id -- out of scope here, still a hard failure) is left
+    alone; the real extract pass below will report it clearly.
+
+    Returns the number of ids assigned.
+    """
+    files_spans = [
+        (path, parser.scan_file(path, strict=False))
+        for path in discovery.discover(paths, recursive=recursive)
+    ]
+
+    resolved_id_by_span = {}  # (path, tag_start) -> id
+    content_to_id = {}
+    for path, spans in files_spans:
+        for span in spans:
+            if span.id:
+                resolved_id_by_span[(path, span.tag_start)] = span.id
+                content_to_id.setdefault(span.content, span.id)
+
+    known_ids = set(resolved_id_by_span.values())
+    assignments = []  # (path, span, new_id), in discovery/document order
+
+    for path, spans in files_spans:
+        for span in spans:
+            if span.id or span.parent_tag_start is None:
+                continue
+            new_id = content_to_id.get(span.content)
+            if new_id is None:
+                parent_id = resolved_id_by_span.get((path, span.parent_tag_start))
+                if parent_id is None:
+                    continue
+                n = 1
+                while "{}.{}".format(parent_id, n) in known_ids:
+                    n += 1
+                new_id = "{}.{}".format(parent_id, n)
+                known_ids.add(new_id)
+                content_to_id.setdefault(span.content, new_id)
+            resolved_id_by_span[(path, span.tag_start)] = new_id
+            assignments.append((path, span, new_id))
+
+    by_path = defaultdict(list)
+    for path, span, new_id in assignments:
+        by_path[path].append((span, new_id))
+
+    for path, entries in by_path.items():
+        text = path.read_text(encoding="utf-8")
+        for span, new_id in sorted(entries, key=lambda e: e[0].tag_start, reverse=True):
+            new_tag_text = re.sub(
+                r"^<span\b", '<span id="{}"'.format(new_id), span.tag_text, count=1
+            )
+            text = "{}{}{}".format(
+                text[: span.tag_start], new_tag_text, text[span.tag_start + len(span.tag_text) :]
+            )
+        path.write_text(text, encoding="utf-8")
+
+    for path, span, new_id in assignments:
+        print(
+            "{}:{}: assigned id {!r} to nested span".format(path, span.line, new_id),
+            file=sys.stderr,
+        )
+
+    return len(assignments)
+
+
 def cmd_extract(args):
     if args.to and not args.engine:
         print("error: --to requires --engine", file=sys.stderr)
         return 1
+
+    assigned = _fill_missing_nested_ids(args.paths, recursive=not args.no_recursive)
 
     spans = resolve_run(args.paths, recursive=not args.no_recursive)
     _report_warnings(spans)
@@ -131,6 +220,8 @@ def cmd_extract(args):
             stories.prune(args.stories_dir, story_id, ids)
 
     message = "extracted {} translatable span(s)".format(sum(1 for s in spans if s.translatable))
+    if assigned:
+        message += ", assigned {} nested id(s)".format(assigned)
     if engine is not None:
         message += ", machine-translated {} row(s) via {}".format(auto_translated, args.engine)
     message += ", updated {} story index(es)".format(len(by_story))

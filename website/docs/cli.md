@@ -43,7 +43,15 @@ $ rmstory validate examples/basic_usage.md
 
 `extract` seeds the translation store and updates every story index the
 scanned spans reference. `ch1.hero-name` isn't translatable on its own
-(no `lang`), so it gets no row of its own:
+(no `lang`), so it gets no row of its own.
+
+If a nested span like `ch1.hero-name` had no `id` in the source, `extract`
+would auto-assign one before doing anything else — reusing an id from
+elsewhere in the run if the content matches exactly, otherwise deriving
+`ch1.reveal.1`, `ch1.reveal.2`, ... from its parent — and rewrite the
+source file with it. Every other command still hard-fails on a missing
+nested id; a *top-level* span with no id is always a hard failure,
+everywhere.
 
 ```console
 $ rmstory extract examples/basic_usage.md --stories-dir ./rmstory-stories

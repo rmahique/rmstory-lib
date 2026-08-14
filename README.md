@@ -103,6 +103,15 @@ row someone (or some other tool) has to add, and by default `translate`
 fails loudly — naming the exact file/line/id — if one is missing, rather
 than silently falling back to the source text.
 
+A nested span with no `id` is normally a hard failure (see
+`requisites.md` `=== Nesting`), but `extract` fixes this itself first: it
+auto-assigns an id — reusing one from elsewhere in the run if the content
+matches exactly, otherwise deriving `<parent-id>.1`, `<parent-id>.2`, ...
+— and rewrites the source file with it, before its normal pass runs.
+Every other command still hard-fails on a missing nested id, and a
+*top-level* span with no id is always a hard failure, everywhere —
+there's no parent to derive from.
+
 `--engine <name>` (see `rmstory.engines` below) is the opt-in way to fill
 that gap automatically, on both commands — but it never overwrites a
 translation that's already stored, however it got there:

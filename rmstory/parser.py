@@ -47,6 +47,13 @@ class TaggedSpan:
     tag_end: int
     end_tag_text: str
     parent_id: Optional[str]
+    # The enclosing span's tag_start, or None if top-level -- unlike
+    # parent_id (which is None either for a top-level span *or* a nested
+    # one whose own parent has no id, in lenient mode), this always
+    # identifies the immediate parent by position. Only used internally by
+    # cli.py's extract auto-id pre-pass (see scan_file's `strict` arg) to
+    # walk nesting structure even across several id-less ancestor levels.
+    parent_tag_start: Optional[int]
 
 
 def _line_offsets(text):
@@ -66,11 +73,12 @@ def nested_placeholder(span_id):
 
 
 class _SpanScanner(HTMLParser):
-    def __init__(self, path, text):
+    def __init__(self, path, text, strict=True):
         super().__init__(convert_charrefs=True)
         self.path = path
         self.spans = []
         self._text = text
+        self._strict = strict
         self._line_offsets = _line_offsets(text)
         self._stack = []  # frames for currently-open tracked spans, outermost first
 
@@ -93,18 +101,26 @@ class _SpanScanner(HTMLParser):
                         "hist attribute requires a value (the story id)", self.path, line
                     )
                 nested_id = attrs_dict.get("id")
-                if not nested_id:
+                if not nested_id and self._strict:
                     raise ValidationError(
-                        "nested tagged <span> requires an id attribute", self.path, line
+                        "nested tagged <span> requires an id attribute -- run "
+                        "`rmstory extract` to auto-assign one, or add it manually",
+                        self.path,
+                        line,
                     )
-                top["buffer"].append(nested_placeholder(nested_id))
+                # In lenient mode (nested_id possibly None/empty), the
+                # placeholder text is disposable: this scan's results are
+                # only used to detect and patch missing ids, then thrown
+                # away in favor of a real, strict re-scan of the fixed
+                # file -- see cli.py's extract auto-id pre-pass.
+                top["buffer"].append(nested_placeholder(nested_id or ""))
 
                 tag_text = self.get_starttag_text()
                 tag_start = self._offset()
                 self._stack.append(
                     {
                         "line": line,
-                        "id": nested_id,
+                        "id": nested_id or None,
                         "lang": attrs_dict.get("lang"),
                         "hist": attrs_dict.get("hist"),
                         "no": "no" in attrs_dict,
@@ -112,6 +128,7 @@ class _SpanScanner(HTMLParser):
                         "tag_text": tag_text,
                         "content_start": tag_start + len(tag_text),
                         "parent_id": top["id"],
+                        "parent_tag_start": top["tag_start"],
                         "buffer": [],
                         "nested_depth": 0,
                     }
@@ -144,6 +161,7 @@ class _SpanScanner(HTMLParser):
                 "tag_text": tag_text,
                 "content_start": tag_start + len(tag_text),
                 "parent_id": None,
+                "parent_tag_start": None,
                 "buffer": [],
                 "nested_depth": 0,
             }
@@ -181,6 +199,7 @@ class _SpanScanner(HTMLParser):
                 tag_end=tag_end,
                 end_tag_text=end_tag_text,
                 parent_id=top["parent_id"],
+                parent_tag_start=top["parent_tag_start"],
             )
         )
 
@@ -189,7 +208,7 @@ class _SpanScanner(HTMLParser):
             self._stack[-1]["buffer"].append(data)
 
 
-def scan_file(path):
+def scan_file(path, strict=True):
     """
     Parse one file and return every tagged span it contains, in document
     order (a nested span is returned as its own entry immediately after
@@ -198,6 +217,12 @@ def scan_file(path):
 
     Args:
         path: A Path to a UTF-8 encoded markdown/HTML file.
+        strict: If False, a nested tagged span with no `id` is returned
+            with `id=None` instead of raising -- used only by cli.py's
+            extract auto-id pre-pass to detect what's missing before
+            fixing it. Every other caller should leave this at the
+            default; a lenient scan's spans are not valid input to
+            run.py's resolve_run (id=None fails validation.validate_id).
 
     Returns:
         A list of TaggedSpan, in document order (by opening-tag position).
@@ -210,15 +235,15 @@ def scan_file(path):
 
     Raises:
         ValidationError: If the file isn't valid UTF-8, a `lang`/`hist`
-            attribute is present without a value, a nested tagged span has
-            no `id`, or a tagged span is left unclosed.
+            attribute is present without a value, a tagged span is left
+            unclosed, or (`strict` only) a nested tagged span has no `id`.
     """
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         raise ValidationError("not a valid UTF-8 file", path) from exc
 
-    scanner = _SpanScanner(path, text)
+    scanner = _SpanScanner(path, text, strict=strict)
     scanner.feed(text)
     scanner.close()
     if scanner._stack:

@@ -203,6 +203,85 @@ def test_extract_with_engine_autofills_target_languages(tmp_path, monkeypatch, c
     assert translations.fetch(conn, "greeting", "en") == "Hello"  # source untouched
 
 
+def test_extract_assigns_missing_nested_id_derived_from_parent(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    src = tmp_path / "doc.md"
+    src.write_text(
+        '<span lang="en" id="para">Hi <span no>World</span> there</span>', encoding="utf-8"
+    )
+
+    rc = main(["extract", str(src), "--stories-dir", str(tmp_path / "stories")])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "assigned 1 nested id(s)" in out
+
+    rewritten = src.read_text(encoding="utf-8")
+    assert rewritten == (
+        '<span lang="en" id="para">Hi <span id="para.1" no>World</span> there</span>'
+    )
+
+
+def test_extract_reuses_id_for_matching_content(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    src = tmp_path / "doc.md"
+    src.write_text(
+        '<span lang="en" id="a">Hi <span no id="hero">Aldric</span> there</span>'
+        '<span lang="en" id="b">Bye <span no>Aldric</span> now</span>',
+        encoding="utf-8",
+    )
+
+    assert main(["extract", str(src), "--stories-dir", str(tmp_path / "stories")]) == 0
+
+    rewritten = src.read_text(encoding="utf-8")
+    assert rewritten == (
+        '<span lang="en" id="a">Hi <span no id="hero">Aldric</span> there</span>'
+        '<span lang="en" id="b">Bye <span id="hero" no>Aldric</span> now</span>'
+    )
+
+
+def test_extract_auto_id_is_idempotent(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    src = tmp_path / "doc.md"
+    src.write_text(
+        '<span lang="en" id="para">Hi <span no>World</span> there</span>', encoding="utf-8"
+    )
+
+    assert main(["extract", str(src), "--stories-dir", str(tmp_path / "stories")]) == 0
+    capsys.readouterr()
+    once = src.read_text(encoding="utf-8")
+
+    rc = main(["extract", str(src), "--stories-dir", str(tmp_path / "stories")])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "assigned" not in out
+    assert src.read_text(encoding="utf-8") == once
+
+
+def test_extract_doubly_nested_both_missing_id(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    src = tmp_path / "doc.md"
+    src.write_text(
+        '<span lang="en" id="a">x<span no>y<span no>z</span></span></span>', encoding="utf-8"
+    )
+
+    rc = main(["extract", str(src), "--stories-dir", str(tmp_path / "stories")])
+    assert rc == 0
+
+    rewritten = src.read_text(encoding="utf-8")
+    assert rewritten == (
+        '<span lang="en" id="a">x<span id="a.1" no>y<span id="a.1.1" no>z</span></span></span>'
+    )
+
+
+def test_top_level_missing_id_still_hard_fails_on_extract(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    src = tmp_path / "doc.md"
+    src.write_text('<span lang="en">no id here</span>', encoding="utf-8")
+
+    rc = main(["extract", str(src), "--stories-dir", str(tmp_path / "stories")])
+    assert rc == 1
+
+
 def test_extract_with_engine_skips_already_stored_translation(tmp_path, monkeypatch, capsys):
     _use_filesystem_backend(tmp_path, monkeypatch)
     _use_fake_engine(monkeypatch)
