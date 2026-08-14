@@ -31,32 +31,23 @@ ordered list of `id`s, where list order is narrative order. See
 
 ## Install
 
-Native package for your distro, built from `packaging/` — see
-`packaging/README.md` for the full per-distro command list (`.deb` for
-Debian/Ubuntu, RPM for Fedora/RHEL, openSUSE Tumbleweed, openSUSE
-Leap 16). multilang-lib isn't built here — install its own package from
+multilang-lib: pick the asset matching your distro from
 [its releases](https://github.com/rmahique/multilang-lib/releases)
-(asset named `python-<distro>-python3-multilang_<version>.<deb|rpm>`).
-No release covers openSUSE Leap 16 yet; use the pip setup below for
-that combination.
+(named `python-<distro>-python3-multilang_<version>.<deb|rpm>`) and
+install it with your distro's own tool. No release covers openSUSE
+Leap 16 yet; use the pip setup below for that combination.
 
 ```bash
-# multilang-lib (Debian example -- pick the matching asset for your distro)
+# Debian/Ubuntu example -- pick the matching asset for your distro
 curl -LO https://github.com/rmahique/multilang-lib/releases/download/1.0/python-debian-bookworm-python3-multilang_0.1.0%2B20260809-1_all.deb
 sudo dpkg -i python-debian-bookworm-python3-multilang_*.deb
-
-# rmstory itself
-git clone https://github.com/rmahique/rmstory-lib.git
-docker build -t rmstory-deb -f rmstory-lib/packaging/docker/Dockerfile.debian-bookworm rmstory-lib/packaging/docker
-docker run --rm -v "$(pwd):/workspace" -w /workspace/rmstory-lib rmstory-deb packaging/build-deb.sh
-sudo dpkg -i rmstory-lib/*.deb
-sudo apt-get install -y python3-yaml
 ```
 
-RPM: swap `Dockerfile.debian-bookworm`/`build-deb.sh` for the matching
-Dockerfile/`build-rpm.sh` pair (`packaging/README.md` has the full
-table), `dpkg -i` for `rpm -i`/`zypper install ./*.rpm`, and the `.deb`
-asset for the matching `python-<distro>-python3-multilang_*.rpm` one.
+rmstory: no release with built packages is published yet (`packaging/`
+builds `.deb`/RPM locally — see `packaging/README.md` for the full
+per-distro command list — and `.github/workflows/release.yml` attaches
+them to a GitHub Release once a version tag is pushed). Until then, use
+the pip live-editing setup below to get rmstory itself.
 
 ### Contributor / live-editing setup
 
