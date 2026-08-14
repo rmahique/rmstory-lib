@@ -33,7 +33,10 @@ def validate_id(value, path=None, line=None):
     """
     if value is None:
         raise ValidationError(
-            "span carries lang/hist/no but has no id attribute", path, line
+            "span carries lang/hist/no but has no id attribute -- run "
+            "`rmstory extract` to auto-assign one, or add it manually",
+            path,
+            line,
         )
     try:
         return _multilang_validation.validate_string_id(value)

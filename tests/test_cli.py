@@ -213,7 +213,7 @@ def test_extract_assigns_missing_nested_id_derived_from_parent(tmp_path, monkeyp
     rc = main(["extract", str(src), "--stories-dir", str(tmp_path / "stories")])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "assigned 1 nested id(s)" in out
+    assert "assigned 1 id(s)" in out
 
     rewritten = src.read_text(encoding="utf-8")
     assert rewritten == (
@@ -273,12 +273,25 @@ def test_extract_doubly_nested_both_missing_id(tmp_path, monkeypatch, capsys):
     )
 
 
-def test_top_level_missing_id_still_hard_fails_on_extract(tmp_path, monkeypatch, capsys):
+def test_extract_assigns_missing_top_level_id_derived_from_filename(tmp_path, monkeypatch, capsys):
     _use_filesystem_backend(tmp_path, monkeypatch)
     src = tmp_path / "doc.md"
     src.write_text('<span lang="en">no id here</span>', encoding="utf-8")
 
     rc = main(["extract", str(src), "--stories-dir", str(tmp_path / "stories")])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "assigned 1 id(s)" in out
+    assert src.read_text(encoding="utf-8") == '<span id="doc.1" lang="en">no id here</span>'
+
+
+def test_validate_still_hard_fails_on_missing_top_level_id(tmp_path, monkeypatch, capsys):
+    # extract auto-assigns; every other command still doesn't.
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    src = tmp_path / "doc.md"
+    src.write_text('<span lang="en">no id here</span>', encoding="utf-8")
+
+    rc = main(["validate", str(src)])
     assert rc == 1
 
 
