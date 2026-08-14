@@ -1,8 +1,6 @@
 # Packaging
 
-Native packages for Debian/Ubuntu and RHEL/Fedora, modeled on
-multilang-lib's own `python/packaging/` (same author, same convention) —
-adapted for a single Python package instead of a 5-language monorepo.
+Native packages for Debian/Ubuntu and RHEL/Fedora.
 Each build must run **inside a container for the actual target distro**
 — package macros, dependency names, and Python versions are
 distro-specific, so building on an unrelated host is not representative.

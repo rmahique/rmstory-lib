@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Version-computation logic for packaging/build-{deb,rpm}.sh, copied from
-# multilang-lib's own scripts/compute-version.sh (same author, same
-# convention) since this repo is a single Python package rather than a
-# multi-language monorepo.
+# Version-computation logic for packaging/build-{deb,rpm}.sh.
 #
 # Every commit gets a buildable package, not just tagged releases:
 #   - HEAD is an exact git tag  -> that tag is a "release"; use it verbatim.

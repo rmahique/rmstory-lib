@@ -8,10 +8,6 @@
 # matching .sha512 file (see packaging/build-deb.sh /
 # packaging/build-rpm.sh) uploaded alongside it.
 #
-# Modeled on multilang-lib's own .github/workflows/build-packages.yml
-# (same author, same convention), trimmed from that project's 5-language
-# x 4-distro matrix down to this project's single language x 4 distros.
-#
 # Each combo builds on the *same distro it packages for* -- a Debian
 # package is built inside a Debian container, an RPM for Fedora is built
 # inside a Fedora container, etc. -- via a Dockerfile per combo at
@@ -48,6 +44,10 @@ on:
       - "scripts/compute-version.sh"
       - ".github/workflows/build-packages.yml"
   workflow_dispatch:
+  # Also callable from release.yml, so a tagged release builds the exact
+  # same matrix as every other push instead of a second, separately
+  # maintained copy that could drift from this one.
+  workflow_call:
 
 jobs:
   package:

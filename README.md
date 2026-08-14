@@ -62,8 +62,7 @@ asset for the matching `python-<distro>-python3-multilang_*.rpm` one.
 
 To edit rmstory itself and run the test suite against your changes
 immediately, without rebuilding a package on every edit, use an editable
-pip install instead — the same convention multilang-lib's own README
-uses for its own contributors:
+pip install instead:
 
 ```bash
 git clone https://github.com/rmahique/rmstory-lib.git
@@ -357,8 +356,10 @@ openSUSE Leap 16) packages build from `packaging/` — see
 `packaging/README.md` for how, including why openSUSE Leap 15 isn't
 supported (its versioned Python package family has no PyYAML — Leap 16's
 default Python is already current, so it doesn't hit this).
-`.github/workflows/build-packages.yml` builds all four on every push and
-uploads them as workflow artifacts.
+`.github/workflows/build-packages.yml` builds all four on every push as
+workflow artifacts; pushing a version tag (`release.yml`) additionally
+attaches them to that tag's [GitHub
+Release](https://github.com/rmahique/rmstory-lib/releases).
 Every package declares `python3-multilang` as a runtime dependency.
 Install the matching package from
 [multilang-lib's releases](https://github.com/rmahique/multilang-lib/releases)

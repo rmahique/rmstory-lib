@@ -1,9 +1,7 @@
-# NOTE: this repo has no git remote configured yet (unlike multilang-lib,
-# which this is modeled on). site_url/repo_url below assume it'll be
-# published as rmahique/rmstory-lib, matching multilang-lib's own org/
-# naming -- update both, and the pages.yml workflow needs nothing else
-# once Settings -> Pages -> Source is set to "GitHub Actions" on the real
-# repo.
+# NOTE: this repo has no git remote configured yet. site_url/repo_url
+# below assume it'll be published as rmahique/rmstory-lib -- update both
+# once it is, and the pages.yml workflow needs nothing else once
+# Settings -> Pages -> Source is set to "GitHub Actions" on the real repo.
 
 site_name: rmstory
 site_description: >-
