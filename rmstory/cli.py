@@ -5,6 +5,8 @@ The `rmstory` command-line utility (requisites.md `== CLI utility`).
     rmstory translate <paths...> --to <lang> [--from <lang>] [--out DIR] [--engine <name>]
     rmstory story <paths...> --story <story-id> [--out FILE]
     rmstory validate <paths...>
+    rmstory generate rewrite <paths...> --engine <name> [--theme "..."] [--out DIR]
+    rmstory generate new --engine <name> --prompt "..." [--lang <lang>] [--out FILE]
 
 `--out` is required for `translate` when more than one file is scanned
 (output mirrors the input files' directory structure under it); with a
@@ -40,6 +42,19 @@ overwrites an existing translation either. Either way, engine output is
 stored with `updated_by="rmstory.engines:<name>"` so it's identifiable
 later as unreviewed machine output (status stays multilang-lib's default,
 "draft").
+
+`generate` (see rmstory.generation) needs an LLM-backed `--engine` --
+gemini, claude-code, ollama, deepseek, mistral, or qwen; a
+translate-only engine (deepl, google-translate, microsoft-translator,
+libretranslate, baidu) has no free-text generation API to call and is
+rejected up front. `generate rewrite` regenerates every translatable
+span's text into a different story -- same tagged-span structure, ids,
+and nested placeholders, different plot/wording -- writing the result the
+same way `translate` does (single file to stdout unless `--out`, `--out`
+required and directory-mirrored for more than one). `generate new` writes
+a brand-new tagged-span document from a free-form `--prompt`, with no
+existing file needed; run `rmstory validate` (and `rmstory extract` if
+any span needs an id) on the result afterward.
 """
 
 import argparse
@@ -49,7 +64,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from . import discovery, engines, parser, render
+from . import discovery, engines, generation, parser, render
 from .exceptions import RmstoryError, ValidationError
 from .run import resolve_run
 from .storage import stories, translations
@@ -62,6 +77,17 @@ def _build_engine(name):
         return engines.get_engine(name)
     except (ValueError, ImportError) as exc:
         raise RmstoryError(str(exc)) from exc
+
+
+def _build_generation_engine(name):
+    engine = _build_engine(name)
+    if not engine.SUPPORTS_GENERATION:
+        raise RmstoryError(
+            "engine {!r} doesn't support story generation -- use one of: {}".format(
+                name, ", ".join(sorted(generation.generation_capable_engines()))
+            )
+        )
+    return engine
 
 
 def _add_common_args(subparser):
@@ -298,6 +324,12 @@ def cmd_translate(args):
                 ),
                 file=sys.stderr,
             )
+        print(
+            "hint: pass --engine <name> to machine-translate missing entries on the "
+            "spot (available: {}), or store the translation yourself first via "
+            "rmstory.storage.translations.store".format(", ".join(sorted(engines._ENGINES))),
+            file=sys.stderr,
+        )
         return 1
 
     if args.out is None:
@@ -329,8 +361,7 @@ def cmd_story(args):
         )
         return 1
 
-    spans_by_id = {span.id: span for span in spans}
-    text, missing = render.assemble_story(spans_by_id, ordered_ids)
+    text, missing = render.assemble_story(spans, ordered_ids)
     if missing:
         print(
             "error: story {!r} references id(s) not found in source: {}".format(
@@ -339,6 +370,49 @@ def cmd_story(args):
             file=sys.stderr,
         )
         return 1
+
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print("wrote {}".format(args.out))
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_generate_rewrite(args):
+    spans = resolve_run(args.paths, recursive=not args.no_recursive)
+    _report_warnings(spans)
+
+    by_path = defaultdict(list)
+    for span in spans:
+        by_path[span.path].append(span)
+
+    if args.out is None and len(by_path) > 1:
+        print("error: --out is required when rewriting more than one file", file=sys.stderr)
+        return 1
+
+    engine = _build_generation_engine(args.engine)
+
+    if args.out is None:
+        [(only_path, only_spans)] = by_path.items()
+        replacements = generation.rewrite_spans_content(only_spans, engine, theme=args.theme)
+        sys.stdout.write(render.rewrite_spans(only_path, only_spans, replacements))
+        return 0
+
+    all_files = list(by_path.keys())
+    for path, path_spans in by_path.items():
+        replacements = generation.rewrite_spans_content(path_spans, engine, theme=args.theme)
+        text = render.rewrite_spans(path, path_spans, replacements)
+        out_path = _output_path_for(path, all_files, args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(text, encoding="utf-8")
+        print("wrote {}".format(out_path))
+    return 0
+
+
+def cmd_generate_new(args):
+    engine = _build_generation_engine(args.engine)
+    text = generation.generate_new_story(args.prompt, engine, lang=args.lang)
 
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")
@@ -391,6 +465,37 @@ def build_parser():
     p_validate = subparsers.add_parser("validate", help="parse and validate only")
     _add_common_args(p_validate)
     p_validate.set_defaults(func=cmd_validate)
+
+    p_generate = subparsers.add_parser("generate", help="generate story content via an LLM engine")
+    generate_subparsers = p_generate.add_subparsers(dest="generate_command", required=True)
+
+    p_generate_rewrite = generate_subparsers.add_parser(
+        "rewrite", help="regenerate existing spans as a different story, same structure"
+    )
+    _add_common_args(p_generate_rewrite)
+    p_generate_rewrite.add_argument(
+        "--engine", required=True, help="LLM-backed engine (see rmstory.engines) to generate with"
+    )
+    p_generate_rewrite.add_argument(
+        "--theme", help="optional guidance for the new story (e.g. a different setting or plot)"
+    )
+    p_generate_rewrite.add_argument("--out")
+    p_generate_rewrite.set_defaults(func=cmd_generate_rewrite)
+
+    p_generate_new = generate_subparsers.add_parser(
+        "new", help="generate a brand-new tagged-span story from a prompt"
+    )
+    p_generate_new.add_argument(
+        "--engine", required=True, help="LLM-backed engine (see rmstory.engines) to generate with"
+    )
+    p_generate_new.add_argument(
+        "--prompt", required=True, help="free-form description of the story to generate"
+    )
+    p_generate_new.add_argument(
+        "--lang", default="en", help="language to tag the generated spans with (default: en)"
+    )
+    p_generate_new.add_argument("--out", help="file to write to (default: stdout)")
+    p_generate_new.set_defaults(func=cmd_generate_new)
 
     return parser
 

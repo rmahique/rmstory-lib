@@ -14,7 +14,13 @@
 # release shipping a newer python3 minor version.
 FROM opensuse/leap:16.0
 
+# python${PYVER}-wheel: rmstory.spec's suse branch lists
+# `%{suse_py_pkg}-wheel` in BuildRequires unconditionally (needed on
+# SLES 15 SP7's older setuptools -- see rmstory.spec and
+# packaging/README.md), so it has to actually be present here too even
+# though Leap 16's own newer setuptools doesn't strictly need it at
+# build time.
 RUN zypper --non-interactive install rpm-build python3 tar git && \
     PYVER="$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')" && \
-    zypper --non-interactive install "python${PYVER}-devel" "python${PYVER}-setuptools" "python${PYVER}-pip" "python${PYVER}-pytest" "python${PYVER}-PyYAML" && \
+    zypper --non-interactive install "python${PYVER}-devel" "python${PYVER}-setuptools" "python${PYVER}-wheel" "python${PYVER}-pip" "python${PYVER}-pytest" "python${PYVER}-PyYAML" && \
     zypper clean --all

@@ -68,19 +68,27 @@ def rewrite_spans(path, spans, replacements):
     """
     text = path.read_text(encoding="utf-8")
 
+    # Keyed by tag_start (unique within one file, which is all a single
+    # rewrite_spans call ever sees), not by id: an id can now be shared
+    # across unrelated spans (extract's content-match reuse) or absent
+    # entirely (a span that needs_id() says doesn't require one) -- either
+    # way it's no longer safe as a structural key. tag_start always is.
     children_by_parent = defaultdict(list)
     for span in spans:
-        if span.parent_id is not None:
-            children_by_parent[span.parent_id].append(span)
+        if span.parent_tag_start is not None:
+            children_by_parent[span.parent_tag_start].append(span)
+
+    def _placeholder_for(span):
+        return span.id if span.id is not None else str(span.tag_start)
 
     dirty_cache = {}
 
     def is_dirty(span):
-        if span.id not in dirty_cache:
-            dirty_cache[span.id] = span.id in replacements or any(
-                is_dirty(child) for child in children_by_parent.get(span.id, [])
+        if span.tag_start not in dirty_cache:
+            dirty_cache[span.tag_start] = span.id in replacements or any(
+                is_dirty(child) for child in children_by_parent.get(span.tag_start, [])
             )
-        return dirty_cache[span.id]
+        return dirty_cache[span.tag_start]
 
     rendered_cache = {}
 
@@ -91,15 +99,15 @@ def rewrite_spans(path, spans, replacements):
         # parent's* content rather than directly into the file text (only
         # top-level spans get that direct splice, where the closing tag
         # would otherwise come "for free" from the untouched remainder).
-        if span.id in rendered_cache:
-            return rendered_cache[span.id]
+        if span.tag_start in rendered_cache:
+            return rendered_cache[span.tag_start]
 
         if not is_dirty(span):
             result = text[span.tag_start : span.tag_end]
-            rendered_cache[span.id] = result
+            rendered_cache[span.tag_start] = result
             return result
 
-        children = children_by_parent.get(span.id, [])
+        children = children_by_parent.get(span.tag_start, [])
 
         if span.id in replacements:
             new_content, new_lang = replacements[span.id]
@@ -110,11 +118,11 @@ def rewrite_spans(path, spans, replacements):
             # placeholder convention for *every* nested child regardless
             # of whether that child itself has its own replacement.
             for child in children:
-                placeholder = nested_placeholder(child.id)
+                placeholder = nested_placeholder(_placeholder_for(child))
                 if placeholder not in content:
                     raise ValidationError(
                         "translation for id {!r} is missing the nested reference "
-                        "{!r} to id {!r} -- a stored translation must preserve a "
+                        "{!r} (for id {!r}) -- a stored translation must preserve a "
                         "nested span's placeholder unchanged".format(
                             span.id, placeholder, child.id
                         ),
@@ -138,10 +146,10 @@ def rewrite_spans(path, spans, replacements):
                 content = content[:rel_start] + render_one(child) + content[rel_end:]
 
         result = tag_text + content + span.end_tag_text
-        rendered_cache[span.id] = result
+        rendered_cache[span.tag_start] = result
         return result
 
-    top_level = [span for span in spans if span.parent_id is None]
+    top_level = [span for span in spans if span.parent_tag_start is None]
     for span in sorted(top_level, key=lambda s: s.tag_start, reverse=True):
         rendered = render_one(span)
         text = "{}{}{}".format(text[: span.tag_start], rendered, text[span.tag_end :])
@@ -149,42 +157,53 @@ def rewrite_spans(path, spans, replacements):
     return text
 
 
-def assemble_story(spans_by_id, ordered_ids):
+def assemble_story(spans, ordered_ids):
     """
     Concatenate a story's entries, in story order, into one document.
 
     A nested span's `<span id="...">` placeholder (see parser.py) is
-    resolved recursively using `spans_by_id` -- the assembled text never
+    resolved recursively using `spans` -- the assembled text never
     contains a literal, unresolved placeholder tag.
 
     Args:
-        spans_by_id: dict of {id: ResolvedSpan}, from the current source
-            scan.
+        spans: The full ResolvedSpan list from the current source scan
+            (every span, not just story entries -- a story entry's nested
+            children, however deep, may not themselves be story-tracked
+            and so wouldn't otherwise be reachable). Takes the raw list
+            rather than a caller-built {id: span} dict deliberately: a span
+            needing no id (needs_id() False) has `id=None`, and more than
+            one of those existing would silently collide/drop entries in
+            such a dict.
         ordered_ids: The story's ordered id list (see storage/stories.py).
 
     Returns:
         A tuple `(text, missing)`: the assembled text (entries joined by a
         blank line), and the list of ids from `ordered_ids` that weren't
-        found in `spans_by_id`.
+        found among `spans`.
     """
-
+    # Keyed by (path, tag_start), not id -- see rewrite_spans for why an id
+    # is no longer a safe structural key (shared via content-match reuse,
+    # or absent entirely for a span needs_id() says doesn't require one).
     children_by_parent = defaultdict(list)
-    for span in spans_by_id.values():
-        if span.parent_id is not None:
-            children_by_parent[span.parent_id].append(span)
+    for span in spans:
+        if span.parent_tag_start is not None:
+            children_by_parent[(span.path, span.parent_tag_start)].append(span)
 
     def resolve_content(span):
         content = span.content
-        for child in children_by_parent.get(span.id, []):
+        for child in children_by_parent.get((span.path, span.tag_start), []):
+            placeholder_key = child.id if child.id is not None else str(child.tag_start)
             content = content.replace(
-                nested_placeholder(child.id), resolve_content(child), 1
+                nested_placeholder(placeholder_key), resolve_content(child), 1
             )
         return content
 
-    missing = [entry_id for entry_id in ordered_ids if entry_id not in spans_by_id]
-    parts = [
-        resolve_content(spans_by_id[entry_id])
-        for entry_id in ordered_ids
-        if entry_id in spans_by_id
-    ]
+    # Only story-tracked spans (needs_id() True, always a real id) are ever
+    # looked up by `entry_id` -- last-one-wins on a duplicate real id is an
+    # accepted, pre-existing tradeoff of content-match id reuse, same as
+    # for any other id lookup.
+    by_id = {span.id: span for span in spans if span.id is not None}
+
+    missing = [entry_id for entry_id in ordered_ids if entry_id not in by_id]
+    parts = [resolve_content(by_id[entry_id]) for entry_id in ordered_ids if entry_id in by_id]
     return "\n\n".join(parts), missing

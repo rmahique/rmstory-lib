@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from . import discovery, parser, validation
-from .attributes import resolve_attributes
+from .attributes import needs_id, resolve_attributes
 from .exceptions import ValidationError
 
 
@@ -17,7 +17,7 @@ from .exceptions import ValidationError
 class ResolvedSpan:
     path: object
     line: int
-    id: str
+    id: Optional[str]
     content: str
     translatable: bool
     language: Optional[str]
@@ -30,6 +30,7 @@ class ResolvedSpan:
     tag_end: int
     end_tag_text: str
     parent_id: Optional[str]
+    parent_tag_start: Optional[int]
 
 
 def resolve_run(paths, recursive=True):
@@ -55,19 +56,34 @@ def resolve_run(paths, recursive=True):
 
     for path in discovery.discover(paths, recursive=recursive):
         for span in parser.scan_file(path):
-            span_id = validation.validate_id(span.id, path, span.line)
+            lang = validation.validate_lang(span.lang, path, span.line)
+
+            # An id is only actually required when it'll be used for
+            # something -- storing a translation, or a story-index entry
+            # -- not just because lang/hist/no happen to be present (e.g. a
+            # bare `no` term, never translated and never story-tracked, has
+            # nothing that would ever look its id up). validate_id is only
+            # called when the span needs one; an unneeded, absent id stays
+            # None rather than being forced to exist.
+            id_required = needs_id(lang=lang, hist=span.hist, no=span.no)
+            if span.id is None and not id_required:
+                span_id = None
+            else:
+                span_id = validation.validate_id(span.id, path, span.line)
+
             # Parents are validated before their own nested children reach
             # this loop (sorted by tag_start), so re-validating parent_id
             # here just re-applies the same normalization (e.g. lowercasing)
             # already done for the parent's own `id` -- without this, a
             # mixed-case id would make a child's parent_id not match its
-            # parent's actual (normalized) ResolvedSpan.id.
+            # parent's actual (normalized) ResolvedSpan.id. A parent with no
+            # id of its own (not required) leaves parent_id as None too --
+            # parent_tag_start (below) is what still links the child to it.
             parent_id = (
                 validation.validate_id(span.parent_id, path, span.line)
                 if span.parent_id is not None
                 else None
             )
-            lang = validation.validate_lang(span.lang, path, span.line)
 
             try:
                 outcome = resolve_attributes(
@@ -96,6 +112,7 @@ def resolve_run(paths, recursive=True):
                     tag_end=span.tag_end,
                     end_tag_text=span.end_tag_text,
                     parent_id=parent_id,
+                    parent_tag_start=span.parent_tag_start,
                 )
             )
 

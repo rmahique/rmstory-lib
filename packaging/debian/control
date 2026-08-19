@@ -19,8 +19,15 @@ Description: Translate and recombine stories authored as tagged spans
  API for translating and recombining stories authored as tagged <span>
  elements in markdown/HTML files. Translations are stored via
  multilang-lib (python3-multilang); a story is a lightweight ordered-id
- index, not a second content store. Six pluggable machine-translation
+ index, not a second content store. Eleven pluggable machine-translation
  engines are available (gemini, deepl, google-translate,
- microsoft-translator, libretranslate, baidu) -- the last three need no
- extra package, the first three need their SDK installed separately via
- pip (see README.md).
+ microsoft-translator, libretranslate, baidu, claude-code, ollama,
+ deepseek, mistral, qwen) -- the last eight work out of the box (plain
+ REST calls or a CLI subprocess, no SDK). The first three each need their
+ vendor's own SDK, none of which is packaged for any distro (pip-only) --
+ install the one(s) you want with `pip install "rmstory[gemini]"`,
+ `"rmstory[deepl]"`, or `"rmstory[google-translate]"` (see README.md).
+ claude-code instead shells out to the `claude` CLI
+ (https://claude.com/claude-code), not pip at all; ollama, deepseek,
+ mistral, and qwen are plain REST calls needing only an API key (ollama
+ needs neither a key nor even a network call off this machine).

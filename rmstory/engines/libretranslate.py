@@ -15,7 +15,7 @@ import os
 import urllib.request
 
 from ..exceptions import TranslationError
-from .base import TranslationEngine
+from .base import TranslationEngine, call_with_retry
 
 _DEFAULT_URL = "http://localhost:5000"
 
@@ -52,7 +52,7 @@ class LibreTranslateEngine(TranslationEngine):
             payload["api_key"] = self._api_key
 
         try:
-            body = self._http_post("{}/translate".format(self._base_url), payload)
+            body = call_with_retry(lambda: self._http_post("{}/translate".format(self._base_url), payload))
         except Exception as exc:
             raise TranslationError("libretranslate request failed: {}".format(exc)) from exc
 

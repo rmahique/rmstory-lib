@@ -18,6 +18,7 @@ class _FakeEngine:
     """
 
     calls: ClassVar[list] = []
+    SUPPORTS_GENERATION = False
 
     def translate(self, text, from_lang, to_lang):
         _FakeEngine.calls.append((text, from_lang, to_lang))
@@ -27,6 +28,26 @@ class _FakeEngine:
 def _use_fake_engine(monkeypatch):
     _FakeEngine.calls = []
     monkeypatch.setitem(engines._ENGINES, "fake-test", _FakeEngine)
+
+
+class _FakeGenerationEngine:
+    """A no-network, SUPPORTS_GENERATION=True engine registered as
+    "fake-gen" for CLI tests to exercise `generate rewrite`/`generate new`
+    wiring without real credentials or an SDK."""
+
+    calls: ClassVar[list] = []
+    SUPPORTS_GENERATION = True
+    response = ""
+
+    def generate(self, prompt):
+        _FakeGenerationEngine.calls.append(prompt)
+        return _FakeGenerationEngine.response
+
+
+def _use_fake_generation_engine(monkeypatch, response=""):
+    _FakeGenerationEngine.calls = []
+    _FakeGenerationEngine.response = response
+    monkeypatch.setitem(engines._ENGINES, "fake-gen", _FakeGenerationEngine)
 
 
 def test_extract_then_translate_single_file_to_stdout(tmp_path, monkeypatch, capsys):
@@ -55,6 +76,8 @@ def test_translate_missing_translation_hard_fails(tmp_path, monkeypatch, capsys)
     err = capsys.readouterr().err
     assert rc == 1
     assert "greeting" in err
+    assert "--engine" in err
+    assert "gemini" in err  # one of the registered engine names, listed as a hint
 
 
 def test_translate_multi_file_requires_out(tmp_path, monkeypatch, capsys):
@@ -319,3 +342,111 @@ def test_extract_with_engine_skips_already_stored_translation(tmp_path, monkeypa
     assert rc == 0
     assert _FakeEngine.calls == []  # existing "es" row was never touched
     assert translations.fetch(conn, "greeting", "es") == "Hola, viajero."
+
+
+def test_generate_rewrite_single_file_to_stdout(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    response = "===[greeting]===\nWelcome, wanderer."
+    _use_fake_generation_engine(monkeypatch, response=response)
+    src = tmp_path / "doc.md"
+    src.write_text('<span lang="en" id="greeting">Hello</span>', encoding="utf-8")
+
+    rc = main(["generate", "rewrite", str(src), "--engine", "fake-gen"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert out == '<span lang="en" id="greeting">Welcome, wanderer.</span>'
+
+
+def test_generate_rewrite_passes_theme_into_prompt(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    _use_fake_generation_engine(monkeypatch, response="===[greeting]===\nHi.")
+    src = tmp_path / "doc.md"
+    src.write_text('<span lang="en" id="greeting">Hello</span>', encoding="utf-8")
+
+    rc = main(
+        ["generate", "rewrite", str(src), "--engine", "fake-gen", "--theme", "a haunted lighthouse"]
+    )
+    capsys.readouterr()
+
+    assert rc == 0
+    assert "a haunted lighthouse" in _FakeGenerationEngine.calls[0]
+
+
+def test_generate_rewrite_with_engine_that_doesnt_support_generation(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    _use_fake_engine(monkeypatch)
+    src = tmp_path / "doc.md"
+    src.write_text('<span lang="en" id="greeting">Hello</span>', encoding="utf-8")
+
+    rc = main(["generate", "rewrite", str(src), "--engine", "fake-test"])
+    err = capsys.readouterr().err
+
+    assert rc == 1
+    assert "fake-test" in err
+    assert "doesn't support story generation" in err
+
+
+def test_generate_rewrite_multiple_files_requires_out(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    _use_fake_generation_engine(monkeypatch, response="===[a]===\nx")
+    (tmp_path / "one.md").write_text('<span lang="en" id="a">Hello</span>', encoding="utf-8")
+    (tmp_path / "two.md").write_text('<span lang="en" id="b">World</span>', encoding="utf-8")
+
+    rc = main(["generate", "rewrite", str(tmp_path), "--engine", "fake-gen"])
+    err = capsys.readouterr().err
+
+    assert rc == 1
+    assert "--out" in err
+
+
+def test_generate_rewrite_writes_out_dir(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    _use_fake_generation_engine(monkeypatch, response="===[a]===\nNew text.")
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "one.md").write_text('<span lang="en" id="a">Hello</span>', encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    rc = main(["generate", "rewrite", str(src_dir), "--engine", "fake-gen", "--out", str(out_dir)])
+    capsys.readouterr()
+
+    assert rc == 0
+    assert (out_dir / "one.md").read_text(encoding="utf-8") == '<span lang="en" id="a">New text.</span>'
+
+
+def test_generate_new_writes_stdout(monkeypatch, capsys):
+    _use_fake_generation_engine(
+        monkeypatch, response='<span lang="en" id="ch1.a">Once upon a time.</span>'
+    )
+
+    rc = main(["generate", "new", "--engine", "fake-gen", "--prompt", "a lighthouse keeper"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert out == '<span lang="en" id="ch1.a">Once upon a time.</span>'
+    assert "a lighthouse keeper" in _FakeGenerationEngine.calls[0]
+
+
+def test_generate_new_writes_out_file(tmp_path, monkeypatch, capsys):
+    _use_fake_generation_engine(monkeypatch, response='<span lang="en" id="ch1.a">Text.</span>')
+    out_file = tmp_path / "new-story.md"
+
+    rc = main(
+        ["generate", "new", "--engine", "fake-gen", "--prompt", "a lighthouse keeper", "--out", str(out_file)]
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "wrote" in out
+    assert out_file.read_text(encoding="utf-8") == '<span lang="en" id="ch1.a">Text.</span>'
+
+
+def test_generate_new_with_engine_that_doesnt_support_generation(monkeypatch, capsys):
+    _use_fake_engine(monkeypatch)
+
+    rc = main(["generate", "new", "--engine", "fake-test", "--prompt", "a lighthouse keeper"])
+    err = capsys.readouterr().err
+
+    assert rc == 1
+    assert "doesn't support story generation" in err

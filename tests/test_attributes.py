@@ -4,7 +4,7 @@ One test per row of requisites.md's truth table (`== Functioning Logic`).
 
 import pytest
 
-from rmstory.attributes import resolve_attributes
+from rmstory.attributes import needs_id, resolve_attributes
 from rmstory.exceptions import ValidationError
 
 
@@ -77,3 +77,56 @@ def test_row12_conflict_without_lang():
     r = resolve_attributes(hist="villain-arc", no=True, inherited_lang="es")
     assert (r.translatable, r.language, r.story_id) == (False, None, None)
     assert r.warning is not None
+
+
+# needs_id: id is only actually required when the outcome is translatable
+# or story-tracked -- same 12 rows, computed from raw attributes alone.
+
+
+def test_needs_id_row1_lang_only():
+    assert needs_id(lang="es") is True
+
+
+def test_needs_id_row2_lang_and_hist():
+    assert needs_id(lang="es", hist="villain-arc") is True
+
+
+def test_needs_id_row3_nolang():
+    assert needs_id(lang="nolang") is False
+
+
+def test_needs_id_row4_nolang_and_hist():
+    # not translatable, but still story-tracked -> still needs an id.
+    assert needs_id(lang="nolang", hist="villain-arc") is True
+
+
+def test_needs_id_row5_lang_and_no():
+    assert needs_id(lang="es", no=True) is True
+
+
+def test_needs_id_row6_nolang_and_no():
+    assert needs_id(lang="nolang", no=True) is False
+
+
+def test_needs_id_row7_conflict_lang():
+    assert needs_id(lang="es", hist="villain-arc", no=True) is True
+
+
+def test_needs_id_row8_conflict_nolang():
+    # `no` cancels story-tracking too -> nothing left that needs an id.
+    assert needs_id(lang="nolang", hist="villain-arc", no=True) is False
+
+
+def test_needs_id_row10_no_only():
+    assert needs_id(no=True) is False
+
+
+def test_needs_id_row11_hist_without_lang():
+    # translatable via inheritance either way -- needs_id doesn't need to
+    # know the actual inherited language, just that hist (uncancelled)
+    # means story-tracked regardless.
+    assert needs_id(hist="villain-arc") is True
+
+
+def test_needs_id_row12_conflict_without_lang():
+    assert needs_id(hist="villain-arc", no=True) is False

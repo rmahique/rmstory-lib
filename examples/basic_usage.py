@@ -60,8 +60,7 @@ def main():
 
     # --- story: assemble a story from whatever source currently holds ----
     ordered_ids = stories.load(stories_dir, "villain-arc")
-    spans_by_id = {span.id: span for span in spans}
-    story_text, _missing = render.assemble_story(spans_by_id, ordered_ids)
+    story_text, _missing = render.assemble_story(spans, ordered_ids)
     print(f"\nvillain-arc story:\n{story_text}")
 
     # --- translate: store one translation, then render the file ----------

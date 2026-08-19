@@ -18,13 +18,13 @@ Source0:        %{srcname}-%{version}.tar.gz
 BuildArch:      noarch
 
 %if 0%{?suse_version}
-# openSUSE Tumbleweed and Leap 16 -- Leap 15 is deliberately not
-# supported here (unlike multilang-lib, which has zero required
-# dependencies and builds fine on every SUSE flavor). This project
-# requires PyYAML at runtime, and Leap 15's versioned python310 package
-# family -- needed since Leap 15's *default* python3 is 3.6, too old for
-# requires-python >=3.9 -- has no python310-PyYAML (confirmed against the
-# real repo metadata: python310-devel/-setuptools exist,
+# openSUSE Tumbleweed, openSUSE Leap 16, and SLES 15 SP7 -- openSUSE Leap
+# 15 is deliberately not supported here (unlike multilang-lib, which has
+# zero required dependencies and builds fine on every SUSE flavor). This
+# project requires PyYAML at runtime, and Leap 15's versioned python310
+# package family -- needed since Leap 15's *default* python3 is 3.6, too
+# old for requires-python >=3.9 -- has no python310-PyYAML (confirmed
+# against the real repo metadata: python310-devel/-setuptools exist,
 # python310-PyYAML doesn't, the same gap multilang-lib already documented
 # for python310-pip/-pytest). A package that can't satisfy its own hard
 # runtime dependency isn't worth shipping, so Leap 15 is skipped rather
@@ -35,31 +35,66 @@ BuildArch:      noarch
 # needed python310 -- but its -devel/-setuptools/-pip/-pytest/-PyYAML
 # are only packaged under the version-specific name (python313-*,
 # confirmed against the real repo metadata), not the plain python3-*
-# names Tumbleweed uses. build-rpm.sh passes
-# --define "leap_versioned_python 1" --define "leap_pyver <NN>" for that
-# job only (computed from the actual python3 installed, not hardcoded,
-# so a future Leap 16.x point release with a newer default python3
-# doesn't silently break this); Tumbleweed doesn't set either, so
-# %%{leap_pyver} defaults to plain "3" there, matching its own python3-*
-# naming.
-%{!?leap_pyver: %global leap_pyver 3}
-%if 0%{?leap_versioned_python}
-%global suse_py_pkg python%{leap_pyver}
+# names Tumbleweed uses.
+#
+# SLES 15 SP7 is a different case again: its *default* python3 is 3.6,
+# same problem as Leap 15 -- but its own versioned family, python311,
+# *does* have -PyYAML/-pytest/-devel/-setuptools/-pip (confirmed against
+# the real repo metadata; this is exactly the gap that sank Leap 15's
+# python310), so it's supportable, just not via Leap 16's "derive the
+# version from whatever the default python3 already is" trick, since
+# SLES 15 SP7's default is the wrong (3.6) one.
+#
+# build-rpm.sh threads this through as %%{suse_pyver} (the bare version
+# number, e.g. "313" or "311", used for *package* names) and
+# %%{suse_python} (the actual interpreter *binary* to invoke -- NOT just
+# "python" + suse_pyver: SUSE's package-name suffix and its real binary
+# name are different strings, confirmed against the real image --
+# python311-base provides /usr/bin/python3.11, dotted after the major
+# version; there's no /usr/bin/python311 at all). Leap 16's job passes
+# suse_pyver derived from the container's actual default python3
+# (self-updating if a future Leap 16.x point release bumps it) but keeps
+# suse_python as plain "python3", since Leap 16's default already *is*
+# the right interpreter; SLES 15 SP7's job passes both explicitly
+# (RMSTORY_SUSE_PYVER), since there's no correct default to derive
+# either from. Tumbleweed sets neither, so both macros default to plain
+# "python3" naming/binary. See build-rpm.sh for exactly how each is
+# computed.
+%{!?suse_pyver: %global suse_pyver 3}
+%{!?suse_python: %global suse_python python3}
+%if 0%{?suse_versioned_python}
+%global suse_py_pkg python%{suse_pyver}
+# The real interpreter *package* name (for BuildRequires/Requires) is
+# python311-base, not "python3.11" (%%{suse_python}, the *binary* name --
+# not a resolvable package/capability on its own) and not "python311"
+# either (confirmed against the real image: no such package exists,
+# only python311-base, -devel, -setuptools, ...).
+%global suse_py_base %{suse_py_pkg}-base
 %else
 %global suse_py_pkg python3
+%global suse_py_base python3
 %endif
 BuildRequires:  python3
+BuildRequires:  %{suse_py_base}
 BuildRequires:  %{suse_py_pkg}-devel
 BuildRequires:  %{suse_py_pkg}-setuptools
+# SLES 15 SP7's setuptools (67.7.2, confirmed) predates setuptools
+# bundling `bdist_wheel` itself (>=70.1); without the standalone `wheel`
+# package `pip wheel` fails with "invalid command 'bdist_wheel'"
+# (confirmed by hitting exactly that failure without it). Harmless on
+# Tumbleweed/Leap 16's newer setuptools, which no longer needs it.
+BuildRequires:  %{suse_py_pkg}-wheel
+BuildRequires:  %{suse_py_pkg}-pip
 BuildRequires:  %{suse_py_pkg}-PyYAML
 # Still uses the same pip-wheel mechanism as Fedora/RHEL's
 # %%pyproject_wheel would, since pyproject-rpm-macros isn't reliably
 # available on SUSE either way.
 #
 # %%python3_sitelib isn't defined without the base python-rpm-macros
-# package -- ask python's own sysconfig for the exact path it will
-# actually install into instead of guessing lib vs lib64.
-%global python3_sitelib %(python3 -c "import sysconfig; print(sysconfig.get_path('purelib', vars={'base': '/usr', 'platbase': '/usr'}))" 2>/dev/null || echo /usr/lib/python3/site-packages)
+# package -- ask the *actual* interpreter we're building with (not
+# necessarily bare python3 -- see above) for the exact path it will
+# install into instead of guessing lib vs lib64.
+%global python3_sitelib %(%{suse_python} -c "import sysconfig; print(sysconfig.get_path('purelib', vars={'base': '/usr', 'platbase': '/usr'}))" 2>/dev/null || echo /usr/lib/python3/site-packages)
 %else
 # Fedora / RHEL / CentOS Stream: the modern PEP 517 build/install macros
 # (%%pyproject_wheel / %%pyproject_install), not the legacy setup.py-based
@@ -72,7 +107,12 @@ BuildRequires:  pyproject-rpm-macros
 %endif
 
 %if 0%{?suse_version}
-Requires:       python3
+# Bare `python3` alone would be satisfied by SLES 15 SP7's ancient 3.6
+# without ever pulling in the versioned interpreter rmstory's own console
+# script is actually built against (see the %%{suse_py_base} explanation
+# above) -- %%{suse_py_base} covers that; it's plain "python3" on
+# Tumbleweed/Leap 16, so this is a no-op change there.
+Requires:       %{suse_py_base}
 Requires:       %{suse_py_pkg}-PyYAML
 %else
 Requires:       python3
@@ -90,20 +130,28 @@ Provides the rmstory CLI (extract/translate/story/validate) and library
 API for translating and recombining stories authored as tagged <span>
 elements in markdown/HTML files. Translations are stored via
 multilang-lib; a story is a lightweight ordered-id index, not a second
-content store. Six pluggable machine-translation engines are available
+content store. Eleven pluggable machine-translation engines are available
 (gemini, deepl, google-translate, microsoft-translator, libretranslate,
-baidu) -- the last three need no extra package, the first three need
-their SDK installed separately via pip (see README.md).
+baidu, claude-code, ollama, deepseek, mistral, qwen) -- the last eight
+work out of the box (plain REST calls or a CLI subprocess, no SDK). The
+first three each need their vendor's own SDK, none of which is packaged
+for any distro (pip-only) -- install the one(s) you want with `pip
+install "rmstory[gemini]"`, `"rmstory[deepl]"`, or
+`"rmstory[google-translate]"` (see README.md). claude-code instead shells
+out to the `claude` CLI (https://claude.com/claude-code), not pip at
+all; ollama, deepseek, mistral, and qwen are plain REST calls needing
+only an API key (ollama needs neither a key nor even a network call off
+this machine).
 
 %prep
 %autosetup -n %{srcname}-%{version}
 
 %if 0%{?suse_version}
 %build
-python3 -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist
+%{suse_python} -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist
 
 %install
-python3 -m pip install dist/*.whl --no-deps --root=%{buildroot} --prefix=/usr
+%{suse_python} -m pip install dist/*.whl --no-deps --root=%{buildroot} --prefix=/usr
 %else
 %build
 %pyproject_wheel
@@ -122,8 +170,8 @@ python3 -m pip install dist/*.whl --no-deps --root=%{buildroot} --prefix=/usr
 # dependency the *installed* package correctly declares but this build
 # container doesn't necessarily provide.
 %if 0%{?suse_version}
-if PYTHONPATH=%{buildroot}%{python3_sitelib} python3 -c "import pytest, multilang" >/dev/null 2>&1; then
-    PYTHONPATH=%{buildroot}%{python3_sitelib} python3 -m pytest tests/ -v
+if PYTHONPATH=%{buildroot}%{python3_sitelib} %{suse_python} -c "import pytest, multilang" >/dev/null 2>&1; then
+    PYTHONPATH=%{buildroot}%{python3_sitelib} %{suse_python} -m pytest tests/ -v
 else
     echo "pytest and/or multilang not available; skipping %%check"
 fi

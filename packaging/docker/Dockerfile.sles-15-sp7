@@ -1,0 +1,31 @@
+# Packaging build image for rmstory-sles-15-sp7. Bakes in every
+# dependency packaging/build-rpm.sh needs, on the same distro the package
+# targets -- generated from (and must be kept in sync with) the combo
+# definition in ../../../.github/workflows/build-packages.yml.
+#
+# SLES 15 SP7's default python3 is 3.6 (confirmed against the real
+# image), too old for requires-python >=3.9 -- the same problem openSUSE
+# Leap 15 has, and why Leap 15 itself is deliberately not supported (see
+# packaging/README.md). Unlike Leap 15 though, SLES 15 SP7's versioned
+# python311 family DOES include -PyYAML and -pytest (confirmed against
+# the real repo metadata -- this is exactly the gap that sank Leap 15's
+# python310), so SLES 15 SP7 is supportable via that family. Hardcoded to
+# "311" here rather than derived from the (wrong, 3.6) default python3
+# the way Leap 16's own Dockerfile derives its versioned family from its
+# already-current default -- there's no correct default to derive from
+# on SLES 15 SP7.
+#
+# registry.suse.com/suse/sle15 pulls from the public SLE_BCI repo, which
+# needs no SUSEConnect registration/subscription for the packages this
+# build uses (confirmed by pulling and querying it anonymously).
+FROM registry.suse.com/suse/sle15:15.7
+
+# python311-wheel is required separately from python311-setuptools
+# (67.7.2, confirmed against the real image) -- unlike Leap 16/Tumbleweed's
+# newer setuptools (>=70.1), which bundles `bdist_wheel` itself, this older
+# setuptools needs the standalone `wheel` package for it, or `pip wheel`
+# fails with "invalid command 'bdist_wheel'" (confirmed by hitting exactly
+# that failure without it).
+RUN zypper --non-interactive install rpm-build python3 tar git \
+        python311-devel python311-setuptools python311-wheel python311-pip python311-pytest python311-PyYAML && \
+    zypper clean --all

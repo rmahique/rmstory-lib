@@ -17,7 +17,7 @@ import urllib.request
 import uuid
 
 from ..exceptions import TranslationError
-from .base import TranslationEngine
+from .base import TranslationEngine, call_with_retry
 
 _DEFAULT_ENDPOINT = "https://api.cognitive.microsofttranslator.com"
 
@@ -73,7 +73,7 @@ class MicrosoftTranslatorEngine(TranslationEngine):
             headers["Ocp-Apim-Subscription-Region"] = self._region
 
         try:
-            body = self._http_post(url, headers, [{"Text": text}])
+            body = call_with_retry(lambda: self._http_post(url, headers, [{"Text": text}]))
         except Exception as exc:
             raise TranslationError("microsoft-translator request failed: {}".format(exc)) from exc
 

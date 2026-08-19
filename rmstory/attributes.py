@@ -83,3 +83,32 @@ def resolve_attributes(lang=None, hist=None, no=False, inherited_lang=None):
         story_id=story_id,
         warning=warning,
     )
+
+
+def needs_id(lang=None, hist=None, no=False):
+    """
+    Whether a span's `id` is actually required: only when it will end up
+    translatable (needs a storage row) or story-tracked (needs a story-index
+    entry) -- never just because `lang`/`hist`/`no` happen to be present.
+
+    Computable from the raw attributes alone, without `inherited_lang`: an
+    explicit real `lang` always makes a span translatable regardless of
+    `hist`/`no`; a non-`no` `hist` always makes a span story-tracked
+    regardless of how `lang` resolves (including via inheritance, when
+    `lang` is absent) -- so story-tracked already implies "needs an id"
+    without needing to know the actual inherited language. Every
+    truth-table row checks out: rows 1,2,5,7,11 need an id; rows
+    3,4,6,8,10,12 don't need translatable, and only row 4 (`nolang` +
+    `hist`, no `no`) needs one anyway, for story membership alone.
+
+    Args:
+        lang: The raw `lang` attribute value, or None if absent.
+        hist: The raw `hist` attribute value, or None if absent.
+        no: Whether the `no` attribute is present.
+
+    Returns:
+        True if a missing `id` on this span is a hard failure.
+    """
+    translatable = lang is not None and lang != "nolang"
+    story_tracked = hist is not None and not no
+    return translatable or story_tracked

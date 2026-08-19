@@ -12,7 +12,7 @@ unlike Gemini/Google Translate.
 import os
 
 from ..exceptions import TranslationError
-from .base import TranslationEngine
+from .base import TranslationEngine, call_with_retry
 
 
 def _to_deepl_lang(tag):
@@ -59,18 +59,21 @@ class DeepLEngine(TranslationEngine):
             import deepl
         except ImportError as exc:
             raise ImportError(
-                "the deepl engine requires the deepl package: "
-                "pip install \"rmstory[deepl]\""
+                "the deepl engine requires the deepl package, which isn't available "
+                "as a system package on any distro (it's DeepL's own PyPI-only SDK) "
+                "-- install it once with: pip install \"rmstory[deepl]\""
             ) from exc
 
         self._client = deepl.Translator(auth_key)
 
     def translate(self, text, from_lang, to_lang):
         try:
-            result = self._client.translate_text(
-                text,
-                source_lang=_to_deepl_lang(from_lang),
-                target_lang=_to_deepl_lang(to_lang),
+            result = call_with_retry(
+                lambda: self._client.translate_text(
+                    text,
+                    source_lang=_to_deepl_lang(from_lang),
+                    target_lang=_to_deepl_lang(to_lang),
+                )
             )
         except Exception as exc:
             raise TranslationError("deepl request failed: {}".format(exc)) from exc

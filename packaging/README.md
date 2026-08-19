@@ -1,6 +1,7 @@
 # Packaging
 
-Native packages for Debian/Ubuntu and RHEL/Fedora.
+Native packages for Debian/Ubuntu, RHEL/Fedora, and the SUSE family
+(openSUSE Tumbleweed/Leap 16, SLES 15 SP7).
 Each build must run **inside a container for the actual target distro**
 — package macros, dependency names, and Python versions are
 distro-specific, so building on an unrelated host is not representative.
@@ -13,9 +14,10 @@ in CI — same image, same commands, locally or in CI).
 | Debian, Ubuntu | `build-deb.sh` | `debian/` | `docker/Dockerfile.debian-bookworm` |
 | RHEL, CentOS Stream, Fedora | `build-rpm.sh` | `rpm/rmstory.spec` | `docker/Dockerfile.fedora-latest` |
 | openSUSE Tumbleweed | `build-rpm.sh` | `rpm/rmstory.spec` (`%if 0%{?suse_version}` branch) | `docker/Dockerfile.opensuse-tumbleweed` |
-| openSUSE Leap 16 | `RMSTORY_LEAP_VERSIONED_PYTHON=1 build-rpm.sh` | `rpm/rmstory.spec` (same branch, `leap_versioned_python`-guarded) | `docker/Dockerfile.opensuse-leap-16` |
+| openSUSE Leap 16 | `RMSTORY_SUSE_VERSIONED_PYTHON=1 build-rpm.sh` | `rpm/rmstory.spec` (same branch, `suse_versioned_python`-guarded) | `docker/Dockerfile.opensuse-leap-16` |
+| SLES 15 SP7 | `RMSTORY_SUSE_PYVER=311 build-rpm.sh` | `rpm/rmstory.spec` (same branch) | `docker/Dockerfile.sles-15-sp7` |
 
-## openSUSE Leap 15 is not supported (Leap 16 is)
+## openSUSE Leap 15 is not supported (Leap 16 and SLES 15 SP7 are)
 
 multilang-lib packages Leap 15 by building against the versioned
 `python310` package (Leap 15's *default* python3 is 3.6, too old for
@@ -41,24 +43,49 @@ referenced by their versioned name uniformly rather than mixing). RPM's
 own `%leap_version` macro returns an unexpanded, unusable value on the
 Leap 16 image tested against (`@leap_version@`, literally), so rather
 than rely on it, `build-rpm.sh` computes the running python3's actual
-version and passes it explicitly via `--define "leap_pyver ..."`,
-gated by `--define "leap_versioned_python 1"` (set only by the Leap 16
-CI job / `RMSTORY_LEAP_VERSIONED_PYTHON=1`) — see `rpm/rmstory.spec`'s
-comment on `leap_versioned_python` for the full mechanism. Computed, not
+version and passes it explicitly via `--define "suse_pyver ..."`,
+gated by `--define "suse_versioned_python 1"` (set only by the Leap 16
+CI job / `RMSTORY_SUSE_VERSIONED_PYTHON=1`) — see `rpm/rmstory.spec`'s
+comment on `suse_versioned_python` for the full mechanism. Computed, not
 hardcoded, so a future Leap 16.x point release shipping a newer default
 python3 doesn't silently break this.
+
+SLES 15 SP7 is a *third*, different case: its default python3 is 3.6
+(same problem as Leap 15) — but unlike Leap 15's `python310`, its own
+versioned family, `python311`, genuinely does have `-PyYAML`/`-pytest`/
+`-devel`/`-setuptools`/`-pip` (verified against the real repo metadata —
+this is exactly the gap that sank Leap 15). So it's supportable, just
+not via Leap 16's "derive the version from the container's already-
+correct default python3" trick, since SLES 15 SP7 has no correct default
+to derive from — its job passes `RMSTORY_SUSE_PYVER=311` explicitly
+instead of `RMSTORY_SUSE_VERSIONED_PYTHON=1`. It also needs one more
+package Leap 16/Tumbleweed don't: `python311-wheel`, since SLES 15 SP7's
+setuptools (67.7.2, verified) predates setuptools bundling `bdist_wheel`
+itself (>=70.1) — without it, `pip wheel` fails with "invalid command
+'bdist_wheel'" (verified by hitting exactly that failure without it).
+And its package-name suffix ("311") and its real interpreter *binary*
+name are different strings — `/usr/bin/python3.11` (dotted), not
+`/usr/bin/python311` (verified against the real image: no such binary or
+package exists, only `python311-base` providing the dotted one) — see
+`rpm/rmstory.spec`'s comment on `suse_python` vs. `suse_py_pkg` for how
+that's kept straight.
 
 ## multilang-lib isn't baked into the build images
 
 Every built package's `Depends`/`Requires` lists `python3-multilang`.
 multilang-lib publishes its own package per distro as a release asset
 (https://github.com/rmahique/multilang-lib/releases), but not for
-openSUSE Leap 16 yet, and none of it is baked into `docker/`'s build
-images. `debian/rules` and `rpm/rmstory.spec`'s `%check` run the test
-suite if `multilang` is importable, otherwise skip with a message —
-verified both ways: a build with multilang unavailable skips tests and
-still produces a working package; the package's own payload runs
-correctly once multilang is installed alongside it.
+openSUSE Leap 16 or SLES 15 SP7 yet, and none of it is baked into
+`docker/`'s build images. `debian/rules` and `rpm/rmstory.spec`'s
+`%check` run the test suite if `multilang` is importable, otherwise skip
+with a message — verified both ways: a build with multilang unavailable
+skips tests and still produces a working package; the package's own
+payload runs correctly once multilang is installed alongside it. On
+SLES 15 SP7 specifically, multilang-lib's own `SQLiteBackend` needs the
+stdlib `sqlite3` module, which SLES splits into a separate `python311`
+package (distinct from `python311-base`) not otherwise needed by
+rmstory itself — install it too if you're testing against a real
+multilang-lib on that target (`zypper install python311`).
 
 ## Debian / Ubuntu
 
@@ -106,13 +133,29 @@ into the same `podman run` invocation.
 
 ```bash
 podman build -t rmstory-python-leap16 -f packaging/docker/Dockerfile.opensuse-leap-16 packaging/docker
-podman run --rm -e RMSTORY_LEAP_VERSIONED_PYTHON=1 \
+podman run --rm -e RMSTORY_SUSE_VERSIONED_PYTHON=1 \
   -v "$(pwd)/..":/workspace -w /workspace/rmstory-lib rmstory-python-leap16 packaging/build-rpm.sh
 ```
 
-The `RMSTORY_LEAP_VERSIONED_PYTHON=1` env var is required here (only
+The `RMSTORY_SUSE_VERSIONED_PYTHON=1` env var is required here (only
 here, not Tumbleweed) — see "openSUSE Leap 15 is not supported (Leap 16
-is)" above for why.
+and SLES 15 SP7 are)" above for why.
+
+## SLES 15 SP7
+
+```bash
+podman build -t rmstory-python-sles15sp7 -f packaging/docker/Dockerfile.sles-15-sp7 packaging/docker
+podman run --rm -e RMSTORY_SUSE_PYVER=311 \
+  -v "$(pwd)/..":/workspace -w /workspace/rmstory-lib rmstory-python-sles15sp7 packaging/build-rpm.sh
+```
+
+`RMSTORY_SUSE_PYVER=311` (not `RMSTORY_SUSE_VERSIONED_PYTHON=1`) is
+required here — see "openSUSE Leap 15 is not supported (Leap 16 and
+SLES 15 SP7 are)" above for why SLES 15 SP7 needs the version pinned
+explicitly rather than derived. `registry.suse.com/suse/sle15` pulls
+from the public `SLE_BCI` repo, which needs no SUSEConnect
+registration/subscription for anything this build uses (verified by
+pulling and building anonymously).
 
 ## Before a real release
 

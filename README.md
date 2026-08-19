@@ -1,10 +1,56 @@
 # rmstory
 
-Licensed under the GNU General Public License v3.0 or later — see `LICENSE`.
-
 Translates and recombines stories authored as tagged `<span>`s in
-markdown/HTML files. See `requisites.md` for the full specification this
-implementation follows.
+markdown/HTML files.
+
+## Index
+
+- [Introduction](#introduction)
+- [Prerequisites and dependencies](#prerequisites-and-dependencies)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Details](#details)
+  - [CLI](#cli)
+  - [Walkthrough](#walkthrough)
+  - [Machine translation engines](#machine-translation-engines)
+  - [Story generation](#story-generation)
+  - [Distro packages](#distro-packages)
+- [Examples and links](#examples-and-links)
+- [License](#license)
+
+## Introduction
+
+rmstory is a library and a CLI (`rmstory`) for translating and
+recombining stories authored as tagged `<span>`s in markdown/HTML files:
+mark up a document once, and get any number of translated and/or
+recombined ("story-variant") renderings back out of it, without
+duplicating the source content per language or per variant.
+
+Translations are stored via
+[multilang-lib](https://github.com/rmahique/multilang-lib), keyed by
+each tagged span's `id` — rmstory itself holds no translation content.
+Machine translation (`rmstory.engines`, eleven built-in engines) and
+LLM-backed story generation (`rmstory.generation`) are both opt-in, on
+top of that same storage.
+
+See `requisites.md` for the full specification this implementation
+follows.
+
+## Prerequisites and dependencies
+
+- **Python 3.9+**.
+- **[multilang-lib](https://github.com/rmahique/multilang-lib)** — the
+  one hard runtime dependency, for translation storage. Not on PyPI:
+  install it from source (editable pip install) or from its own native
+  package release — see [Quick start](#quick-start) and
+  [Distro packages](#distro-packages) below.
+- **Nothing else** to get started — translation storage defaults to a
+  zero-config filesystem backend (see [CLI](#cli)).
+- **Optional, per machine-translation engine**: `gemini`, `deepl`, and
+  `google-translate` each need their vendor's own SDK installed as a
+  `pip install "rmstory[<engine>]"` extra; every other engine (including
+  every engine capable of story generation) needs nothing beyond the
+  standard library — see [Machine translation engines](#machine-translation-engines).
 
 ## How it works
 
@@ -34,31 +80,11 @@ store — they're a membership/order index: one YAML file per story, an
 ordered list of `id`s, where list order is narrative order. See
 `requisites.md` `== Storage` for why.
 
-## Install
+## Quick start
 
-multilang-lib: pick the asset matching your distro from
-[its releases](https://github.com/rmahique/multilang-lib/releases)
-(named `python-<distro>-python3-multilang_<version>.<deb|rpm>`) and
-install it with your distro's own tool. No release covers openSUSE
-Leap 16 yet; use the pip setup below for that combination.
-
-```bash
-# Debian/Ubuntu example -- pick the matching asset for your distro
-curl -LO https://github.com/rmahique/multilang-lib/releases/download/1.0/python-debian-bookworm-python3-multilang_0.1.0%2B20260809-1_all.deb
-sudo dpkg -i python-debian-bookworm-python3-multilang_*.deb
-```
-
-rmstory: no release with built packages is published yet (`packaging/`
-builds `.deb`/RPM locally — see `packaging/README.md` for the full
-per-distro command list — and `.github/workflows/release.yml` attaches
-them to a GitHub Release once a version tag is pushed). Until then, use
-the pip live-editing setup below to get rmstory itself.
-
-### Contributor / live-editing setup
-
-To edit rmstory itself and run the test suite against your changes
-immediately, without rebuilding a package on every edit, use an editable
-pip install instead:
+Install rmstory and its one dependency, both as editable checkouts (no
+built package release exists yet — see [Distro packages](#distro-packages)
+for the native `.deb`/RPM path once one does):
 
 ```bash
 git clone https://github.com/rmahique/rmstory-lib.git
@@ -71,19 +97,50 @@ pip install -e ".[dev]"      # rmstory itself, + pytest, ruff
 pytest tests/ -v
 ```
 
-## CLI
+**CLI**, end to end — extract the source text, then render a translated
+copy (`--engine` machine-translates on the spot; drop it to fail loudly
+instead and supply a translation yourself):
+
+```console
+$ export GEMINI_API_KEY=...   # or any other engine's credential -- see Details below
+$ rmstory extract examples/basic_usage.md
+extracted 2 translatable span(s), updated 0 story index(es)
+$ rmstory translate examples/basic_usage.md --to es --engine gemini
+```
+
+**Library**, the same translation call other applications can use
+directly, independent of the CLI:
+
+```python
+from rmstory.engines import translate_text
+
+translate_text("Hello, traveler.", "en", "es", engine="gemini")
+# -> "Hola, viajero."
+```
+
+See [Details](#details) below for the full CLI reference, a step-by-step
+walkthrough, every engine's credentials, and story generation.
+
+## Details
+
+### CLI
 
 ```bash
 rmstory validate <paths...>                          # parse + validate only, no writes
 rmstory extract <paths...> [--prune] [--engine <name> --to <lang> [--to <lang> ...]]
 rmstory translate <paths...> --to <lang> [--from <lang>] [--out DIR] [--engine <name>]
 rmstory story <paths...> --story <id> [--out FILE]
+rmstory generate rewrite <paths...> --engine <name> [--theme "..."] [--out DIR]
+rmstory generate new --engine <name> --prompt "..." [--lang <lang>] [--out FILE]
 ```
 
 Translation storage is configured the same way multilang-lib is
 (`MULTILANG_DB_BACKEND`, `MULTILANG_DB_PATH`, ... — see multilang-lib's own
-README). Story index location defaults to `./rmstory-stories`, override
-with `--stories-dir` or `RMSTORY_STORIES_PATH`.
+README). With neither set, it defaults to the filesystem backend rooted at
+`./rmstory/strings` (override the path with `RMSTORY_STRINGS_PATH` or
+`MULTILANG_DB_PATH`) — no configuration is required to get started. Story
+index location defaults to `./rmstory-stories`, override with
+`--stories-dir` or `RMSTORY_STORIES_PATH`.
 
 `translate` rewrites each source file with translated spans spliced in at
 their exact character offsets — everything else in the file (surrounding
@@ -103,18 +160,23 @@ row someone (or some other tool) has to add, and by default `translate`
 fails loudly — naming the exact file/line/id — if one is missing, rather
 than silently falling back to the source text.
 
-A tagged span with no `id` is normally a hard failure (see
-`requisites.md` `=== Nesting`), but `extract` fixes this itself first: it
-auto-assigns one — top-level or nested — reusing an id from elsewhere in
-the run if the content matches exactly, otherwise deriving
-`<parent-id>.1`, `<parent-id>.2`, ... for a nested span or
-`<file-stem>.1`, `<file-stem>.2`, ... for a top-level one — and rewrites
-the source file with it, before its normal pass runs. Every other
-command still hard-fails on any span with no id.
+A tagged span's `id` is only actually required when something will use
+it — a stored translation (it's translatable) or a story-index entry (it
+carries `hist`). A bare `no` term or a `lang="nolang"` span with no
+`hist` never needs one at all (see `requisites.md`
+`=== When an id is required`). Where an id genuinely is required and
+missing, that's a hard failure — except on `extract`, which fixes this
+itself first: it auto-assigns one (even for spans that don't strictly
+need one) — top-level or nested — reusing an id from elsewhere in the
+run if the content matches exactly, otherwise deriving `<parent-id>.1`,
+`<parent-id>.2`, ... for a nested span or `<file-stem>.1`,
+`<file-stem>.2`, ... for a top-level one — and rewrites the source file
+with it, before its normal pass runs.
 
-`--engine <name>` (see `rmstory.engines` below) is the opt-in way to fill
-that gap automatically, on both commands — but it never overwrites a
-translation that's already stored, however it got there:
+`--engine <name>` (see [Machine translation engines](#machine-translation-engines)
+below) is the opt-in way to fill that gap automatically, on both
+commands — but it never overwrites a translation that's already stored,
+however it got there:
 
 - On `translate`, a missing translation is machine-translated on the
   spot, stored, and used for that render. An id that already has a
@@ -133,7 +195,13 @@ rmstory extract examples/basic_usage.md --engine gemini --to es --to fr
 rmstory translate examples/basic_usage.md --to es --engine gemini
 ```
 
-## Walkthrough
+`generate rewrite`/`generate new` (see
+[Story generation](#story-generation) below) are a separate, opt-in
+capability layered on top of the same `--engine` registry — they need an
+LLM-backed engine (`gemini`, `claude-code`, `ollama`, `deepseek`,
+`mistral`, `qwen`), not a translate-only one.
+
+### Walkthrough
 
 `examples/basic_usage.md`:
 
@@ -151,7 +219,10 @@ beat — a proper name marked `no` (invariant across stories *and*, having
 no `lang` of its own, never translated at all; it stays "Aldric" in every
 rendered language).
 
-Point the CLI at a filesystem-backed translation store and validate first:
+Point the CLI at a filesystem-backed translation store (optional — with
+neither variable set, `rmstory` defaults to a filesystem store rooted at
+`./rmstory/strings`; here we pick a different path explicitly) and
+validate first:
 
 ```console
 $ export MULTILANG_DB_BACKEND=filesystem
@@ -191,6 +262,7 @@ missing — rather than shipping a document that's silently half-English:
 $ rmstory translate examples/basic_usage.md --to es
 error: .../rmstory-lib/examples/basic_usage.md:3: no 'es' translation stored for id 'ch1.greeting'
 error: .../rmstory-lib/examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.reveal'
+hint: pass --engine <name> to machine-translate missing entries on the spot (available: baidu, claude-code, deepl, deepseek, gemini, google-translate, libretranslate, microsoft-translator, mistral, ollama, qwen), or store the translation yourself first via rmstory.storage.translations.store
 ```
 
 (`ch1.hero-name` isn't listed — it was never translatable, so `translate`
@@ -234,7 +306,7 @@ $ rmstory translate examples/basic_usage.md --to es
 <span lang="es" id="ch1.reveal" hist="villain-arc">El alcalde — tío de <span no id="ch1.hero-name">Aldric</span> — era el villano después de todo.</span>
 ```
 
-## Machine translation engines
+### Machine translation engines
 
 `rmstory.engines` is a plain library function other applications can call
 directly — it doesn't touch translation storage or the CLI on its own,
@@ -248,10 +320,16 @@ translate_text("Hello, traveler.", "en", "es", engine="gemini")
 ```
 
 Engines are pluggable by name through a small registry
-(`rmstory.engines.register_engine`). Six are built in: `"gemini"`,
+(`rmstory.engines.register_engine`). Eleven are built in: `"gemini"`,
 `"deepl"`, `"google-translate"`, `"microsoft-translator"`,
-`"libretranslate"`, and `"baidu"`. The first three need an SDK — each is
-its own extra, so picking one doesn't drag the others' dependencies in:
+`"libretranslate"`, `"baidu"`, `"claude-code"`, `"ollama"`, `"deepseek"`,
+`"mistral"`, and `"qwen"`. The first three each wrap their
+vendor's own SDK (`google-genai`, `deepl`, `google-cloud-translate`) —
+none of the three is packaged for any distro, pip-only, so this one-time
+install step is required no matter how you installed rmstory itself
+(pip, `.deb`, or `.rpm` — the native packages can't pull these in via
+`apt`/`zypper` `Depends`, since the SDKs simply aren't there to depend
+on). Each is its own extra, so picking one doesn't drag the others in:
 
 ```bash
 pip install "rmstory[gemini]"            # google-genai
@@ -260,8 +338,33 @@ pip install "rmstory[google-translate]"  # google-cloud-translate (only needed
                                           # for that engine's account-based mode)
 ```
 
-`microsoft-translator`, `libretranslate`, and `baidu` need nothing extra
-at all — all three are plain REST calls made with the standard library.
+`microsoft-translator`, `libretranslate`, `baidu`, `ollama`, `deepseek`,
+`mistral`, and `qwen` need nothing extra at all — every one of them is a
+plain REST call made with the standard library, so those seven work
+immediately after any install method.
+
+All eleven engines automatically retry a transient failure (429/5xx, a
+connection-level timeout/reset, or claude-code's subprocess timeout) a
+few times with exponential backoff before giving up — a momentary "high
+demand" or rate-limit response from the vendor's API doesn't abort an
+entire `extract`/`translate` run. A non-transient failure (bad
+credentials, malformed request, ...) still fails immediately, on the
+first attempt.
+
+**claude-code** — shells out to the `claude` CLI's non-interactive print
+mode (`claude -p`) instead of any API. Unlike every other engine here,
+rmstory doesn't handle credentials for it at all: Claude Code manages its
+own authentication (subscription login or `ANTHROPIC_API_KEY`), entirely
+outside rmstory's knowledge — this engine just runs whatever `claude` is
+already logged in as on this machine. Not a pip package either: install
+and log in to the CLI itself (https://claude.com/claude-code), not `pip
+install "rmstory[claude-code]"`. No `--model` is passed unless given
+explicitly (`model=` or `RMSTORY_CLAUDE_MODEL`) — the CLI's own configured
+default is used as-is.
+
+```bash
+rmstory translate examples/basic_usage.md --to es --engine claude-code
+```
 
 **gemini** — two ways to authenticate, matching the two ways Gemini
 itself is offered:
@@ -271,12 +374,20 @@ itself is offered:
 - **Account-based** — Vertex AI against a Google Cloud project, via
   `GOOGLE_CLOUD_PROJECT` (or `translate_text(..., project="...")`),
   authenticated through your gcloud Application Default Credentials.
-  Either set `GOOGLE_GENAI_USE_VERTEXAI=true` explicitly or just set a
-  project — a project alone is enough to select this mode.
+
+When neither mode is forced, an available API key wins — `GOOGLE_CLOUD_PROJECT`
+alone is only enough to select Vertex AI mode when no API key is present.
+This matters because `GOOGLE_CLOUD_PROJECT` is often already set for
+unrelated reasons (`gcloud` config, the `google-translate` engine's own
+Vertex mode) without the ADC setup Vertex AI needs — a bare project
+shouldn't silently require that when a working API key is already
+available. To force Vertex AI even with an API key set, set
+`GOOGLE_GENAI_USE_VERTEXAI=true` explicitly (or `vertexai=True` in code).
 
 ```bash
-export GEMINI_API_KEY=...          # free tier, or:
-export GOOGLE_CLOUD_PROJECT=...    # account-based (Vertex AI)
+export GEMINI_API_KEY=...          # free tier -- wins if both are set
+export GOOGLE_CLOUD_PROJECT=...    # account-based (Vertex AI), used only
+                                    # when GEMINI_API_KEY/GOOGLE_API_KEY isn't set
 ```
 
 **deepl** — one credential shape either way: an auth key via
@@ -303,9 +414,15 @@ the pricing:
   Credentials as gemini's Vertex AI mode. Requires the
   `google-cloud-translate` package.
 
+Same precedence as gemini: an available API key wins when both are set —
+`GOOGLE_CLOUD_PROJECT` alone (e.g. left over from configuring gemini's
+Vertex mode) doesn't silently require ADC setup for this engine too. Pass
+`translate_text(..., client=...)` to force v3 despite an API key being set.
+
 ```bash
-export GOOGLE_TRANSLATE_API_KEY=...   # API-key mode, or:
-export GOOGLE_CLOUD_PROJECT=...       # account-based (Advanced/v3)
+export GOOGLE_TRANSLATE_API_KEY=...   # API-key mode -- wins if both are set
+export GOOGLE_CLOUD_PROJECT=...       # account-based (Advanced/v3), used only
+                                       # when GOOGLE_TRANSLATE_API_KEY isn't set
 ```
 
 **microsoft-translator** — like deepl, one credential shape covers both
@@ -347,10 +464,43 @@ export BAIDU_TRANSLATE_APPID=...
 export BAIDU_TRANSLATE_SECRET_KEY=...
 ```
 
+**ollama** — runs entirely on your own machine against a local `ollama
+serve` daemon: no API key, no account, no data leaving your network. Any
+open-weight model you've pulled works (`ollama pull llama3.1`); unlike
+every other engine here there's no safe default model to fall back to, so
+one must be given explicitly via `model=` or `RMSTORY_OLLAMA_MODEL`.
+`base_url`/`RMSTORY_OLLAMA_URL` defaults to `http://localhost:11434`.
+
+```bash
+export RMSTORY_OLLAMA_MODEL=llama3.1
+export RMSTORY_OLLAMA_URL=http://localhost:11434   # only if not the local default
+```
+
+**deepseek**, **mistral**, and **qwen** — each is a hosted, official,
+OpenAI-compatible chat completions API for an open-weight model family
+(DeepSeek-V3/R1, Mistral/Mixtral, Qwen), authenticated with a plain
+Bearer API key. No SDK needed for any of the three — same plain REST
+call as `libretranslate`, just with an `Authorization` header.
+
+```bash
+export DEEPSEEK_API_KEY=...    # https://platform.deepseek.com
+export MISTRAL_API_KEY=...     # https://console.mistral.ai
+export DASHSCOPE_API_KEY=...   # https://dashscope.console.aliyun.com -- qwen
+```
+
+`qwen` defaults to DashScope's international endpoint
+(`RMSTORY_QWEN_URL`) — override it to
+`https://dashscope.aliyuncs.com/compatible-mode/v1` for a mainland China
+account/key instead. `mistral` defaults to `mistral-large-latest`
+(`RMSTORY_MISTRAL_MODEL`), Mistral's own always-current alias, same
+reasoning as gemini's `DEFAULT_MODEL`. `deepseek` defaults to
+`deepseek-chat` (`RMSTORY_DEEPSEEK_MODEL`; use `deepseek-reasoner` for
+R1).
+
 Called directly like this, it's a building block for whatever your own
 code needs — filling in the missing `es` row from the walkthrough above
 without typing the translation by hand (swap `engine="gemini"` for any of
-the other five freely — same call shape either way):
+the other nine freely — same call shape either way):
 
 ```python
 from rmstory.engines import translate_text
@@ -361,24 +511,121 @@ text = translate_text("Hello, traveler.", "en", "es", engine="gemini")
 translations.store(conn, "ch1.greeting", "es", text)
 ```
 
-The CLI's `--engine` flag (see `## CLI` above) does exactly this
+The CLI's `--engine` flag (see [CLI](#cli) above) does exactly this
 automatically for `extract`/`translate`, so most of the time you won't
 need to call `translate_text` by hand at all — it's there for callers
 embedding rmstory as a library.
 
-## Distro packages
+### Story generation
 
-Native `.deb` (Debian/Ubuntu) and RPM (Fedora/RHEL, openSUSE Tumbleweed,
-openSUSE Leap 16) packages build from `packaging/` — see
-`packaging/README.md` for how, including why openSUSE Leap 15 isn't
-supported (its versioned Python package family has no PyYAML — Leap 16's
-default Python is already current, so it doesn't hit this).
-`.github/workflows/build-packages.yml` builds all four on every push as
-workflow artifacts; pushing a version tag (`release.yml`) additionally
-attaches them to that tag's [GitHub
-Release](https://github.com/rmahique/rmstory-lib/releases).
+`rmstory.generation` sits next to `rmstory.engines`: same registry, same
+`--engine` flag, but for producing story *content* with an LLM instead of
+translating existing content. Only an engine backed by a general-purpose
+LLM can do this (`gemini`, `claude-code`, `ollama`, `deepseek`, `mistral`,
+`qwen` — `TranslationEngine.SUPPORTS_GENERATION`); a translate-only
+engine (`deepl`, `google-translate`, `microsoft-translator`,
+`libretranslate`, `baidu`) has no free-text generation API to call and is
+rejected up front, both from the CLI and from
+`rmstory.generation.generate_with_engine`.
+
+**`rmstory generate rewrite`** — regenerates every translatable span's
+text into a *different* story: same tagged-span structure (ids, nesting,
+invariant `no` spans, language), different plot/wording/details. All of
+a file's translatable spans are sent to the engine in one call, so the
+rewritten parts stay coherent with each other rather than reading like
+unrelated sentences; a nested span's `<span id="..."/>` placeholder must
+come back unchanged in its parent's rewritten text (verified before
+writing anything — the same requirement `render.rewrite_spans` places on
+a stored translation), so the child's own rendering can still be
+substituted in afterward. `--theme` is optional free-form guidance
+("a haunted lighthouse" instead of "a friendly mayor"); without it, the
+engine just picks its own different story. Output follows `translate`'s
+own rule: one input file goes to stdout unless `--out` names a file;
+more than one requires `--out` as a directory, mirroring the inputs'
+structure under it.
+
+```bash
+rmstory generate rewrite examples/basic_usage.md --engine gemini --theme "a heist gone wrong"
+```
+
+**`rmstory generate new`** — writes a brand-new tagged-span document from
+a free-form `--prompt`, no existing file needed. The engine is asked to
+produce its own ids and its own `<span lang="..." id="...">`/`<span no
+id="...">` structure — `rmstory` doesn't validate that structure itself
+beyond what `rmstory validate` already checks, so run that (and
+`rmstory extract` if any span still needs an id assigning) on the result
+afterward.
+
+```bash
+rmstory generate new --engine gemini --prompt "a lighthouse keeper who hears whales" --out story.md
+rmstory validate story.md
+```
+
+Both are plain library functions too, independent of the CLI, the same
+shape as `rmstory.engines.translate_text`:
+
+```python
+from rmstory import engines, generation
+from rmstory.run import resolve_run
+
+engine = engines.get_engine("gemini")
+spans = resolve_run(["examples/basic_usage.md"])
+replacements = generation.rewrite_spans_content(spans, engine, theme="a heist gone wrong")
+
+text = generation.generate_new_story("a lighthouse keeper who hears whales", engine)
+```
+
+### Distro packages
+
+multilang-lib: pick the asset matching your distro from
+[its releases](https://github.com/rmahique/multilang-lib/releases)
+(named `python-<distro>-python3-multilang_<version>.<deb|rpm>`) and
+install it with your distro's own tool. No release covers openSUSE
+Leap 16 yet; use the pip setup in [Quick start](#quick-start) for that
+combination.
+
+```bash
+# Debian/Ubuntu example -- pick the matching asset for your distro
+curl -LO https://github.com/rmahique/multilang-lib/releases/download/1.0/python-debian-bookworm-python3-multilang_0.1.0%2B20260809-1_all.deb
+sudo dpkg -i python-debian-bookworm-python3-multilang_*.deb
+```
+
+rmstory itself: native `.deb` (Debian/Ubuntu) and RPM (Fedora/RHEL,
+openSUSE Tumbleweed, openSUSE Leap 16, SLES 15 SP7) packages build from
+`packaging/` — see `packaging/README.md` for how, including why openSUSE
+Leap 15 isn't supported (its versioned Python package family has no
+PyYAML) while SLES 15 SP7 is, despite hitting the same too-old-default-
+Python problem (its own versioned family does have PyYAML — Leap 16's
+default Python is already current, so it doesn't hit either problem in
+the first place). `.github/workflows/build-packages.yml` builds all five
+on every push as workflow artifacts; pushing a version tag
+(`release.yml`) additionally attaches them to that tag's [GitHub
+Release](https://github.com/rmahique/rmstory-lib/releases). No release
+with built packages is published yet — until then, use the pip
+live-editing setup in [Quick start](#quick-start) to get rmstory itself.
+
 Every package declares `python3-multilang` as a runtime dependency.
-Install the matching package from
-[multilang-lib's releases](https://github.com/rmahique/multilang-lib/releases)
-alongside rmstory's (see `## Install` above). No release covers openSUSE
-Leap 16 yet; use the pip setup there instead.
+Install the matching multilang-lib package (above) alongside rmstory's.
+No release covers openSUSE Leap 16 or SLES 15 SP7 yet; use the pip setup
+there instead.
+
+## Examples and links
+
+- [`examples/basic_usage.md`](examples/basic_usage.md) — the file used
+  throughout this README's [Walkthrough](#walkthrough).
+- [`requisites.md`](requisites.md) — the full specification this
+  implementation follows.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to add a translation engine,
+  change attribute-resolution behavior, and the doc-update expectations
+  that go with either.
+- [`packaging/README.md`](packaging/README.md) — building `.deb`/RPM
+  packages per distro, including the SUSE-family Python-version details.
+- [multilang-lib](https://github.com/rmahique/multilang-lib) — the
+  translation-storage library rmstory is built on.
+- [rmahique.github.io/rmstory-lib](https://rmahique.github.io/rmstory-lib/)
+  — the hosted docs site (usage examples; this README and `requisites.md`
+  remain the canonical reference).
+
+## License
+
+GNU General Public License v3.0 or later — see [`LICENSE`](LICENSE).

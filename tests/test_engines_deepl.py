@@ -81,3 +81,7 @@ def test_missing_sdk_raises_import_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "deepl", None)
     with pytest.raises(ImportError):
         DeepLEngine(auth_key="fake-key")
+
+
+def test_does_not_support_generation():
+    assert DeepLEngine.SUPPORTS_GENERATION is False

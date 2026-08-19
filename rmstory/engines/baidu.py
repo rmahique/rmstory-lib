@@ -20,7 +20,7 @@ import urllib.parse
 import urllib.request
 
 from ..exceptions import TranslationError
-from .base import TranslationEngine
+from .base import TranslationEngine, call_with_retry
 
 _ENDPOINT = "https://fanyi-api.baidu.com/api/trans/vip/translate"
 
@@ -92,7 +92,7 @@ class BaiduEngine(TranslationEngine):
         url = "{}?{}".format(_ENDPOINT, urllib.parse.urlencode(params))
 
         try:
-            body = self._http_get(url)
+            body = call_with_retry(lambda: self._http_get(url))
         except Exception as exc:
             raise TranslationError("baidu request failed: {}".format(exc)) from exc
 

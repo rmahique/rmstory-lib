@@ -49,19 +49,51 @@ cp packaging/rpm/rmstory.spec "${RPMBUILD_ROOT}/SPECS/"
 # so every commit build (not just tagged releases) gets stamped with
 # compute-version.sh's output instead of always building 0.1.0-1.
 #
-# RMSTORY_LEAP_VERSIONED_PYTHON=1 (set by the openSUSE Leap 16 CI job
-# only, not by Tumbleweed): Leap 16's default python3 is already current
-# (unlike Leap 15's, no alternate-interpreter workaround needed), but its
-# -devel/-setuptools/-pip/-pytest/-PyYAML packages are only published
-# under a version-specific name (python313-*, not Tumbleweed's plain
-# python3-*) -- see rmstory.spec's comment on `leap_versioned_python` for
-# the full reasoning. The exact suffix is computed here from whatever
-# python3 is actually installed, not hardcoded, so a future Leap 16.x
-# point release with a newer default python3 doesn't silently break this.
+# Two ways to opt into a versioned python family (see rmstory.spec's
+# comment on `suse_versioned_python`/`suse_pyver` for the full reasoning):
+#
+# RMSTORY_SUSE_PYVER=<NN> (set by the SLES 15 SP7 CI job, e.g. "311"):
+# forces that exact family explicitly. Required there because SLES 15
+# SP7's *default* python3 is 3.6 -- too old to derive anything useful
+# from -- unlike Leap 16's, so there's no safe way to compute this one
+# automatically the way Leap 16's job does below.
+#
+# RMSTORY_SUSE_VERSIONED_PYTHON=1 (set by the openSUSE Leap 16 CI job
+# only, not by Tumbleweed, and only used when RMSTORY_SUSE_PYVER isn't
+# already set): Leap 16's default python3 is already current (unlike
+# Leap 15's or SLES 15 SP7's), but its -devel/-setuptools/-pip/-pytest/
+# -PyYAML packages are only published under a version-specific name
+# (python313-*, not Tumbleweed's plain python3-*). The exact suffix is
+# computed here from whatever python3 is actually installed, not
+# hardcoded, so a future Leap 16.x point release with a newer default
+# python3 doesn't silently break this -- this self-updating trick only
+# works because Leap 16's default is already correct, which is exactly
+# what doesn't hold for SLES 15 SP7 above.
+#
+# suse_python (the actual interpreter *binary* to invoke) is computed
+# here, not string-mangled inside the spec: SUSE's package-name suffix
+# ("311") and its real binary name ("python3.11", dotted after the major
+# version) are different strings (confirmed against the real image --
+# python311-base provides /usr/bin/python3.11; there's no /usr/bin/
+# python311 at all). Leap 16 doesn't need this divergence -- its default
+# `python3` already *is* the right interpreter -- so only the
+# RMSTORY_SUSE_PYVER (explicit) path computes a dotted binary name;
+# RMSTORY_SUSE_VERSIONED_PYTHON keeps using plain `python3`.
 EXTRA_DEFINES=()
-if [ "${RMSTORY_LEAP_VERSIONED_PYTHON:-0}" = "1" ]; then
-    LEAP_PYVER="$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
-    EXTRA_DEFINES+=(--define "leap_versioned_python 1" --define "leap_pyver ${LEAP_PYVER}")
+if [ -n "${RMSTORY_SUSE_PYVER:-}" ]; then
+    SUSE_PYTHON_BIN="python${RMSTORY_SUSE_PYVER:0:1}.${RMSTORY_SUSE_PYVER:1}"
+    EXTRA_DEFINES+=(
+        --define "suse_versioned_python 1"
+        --define "suse_pyver ${RMSTORY_SUSE_PYVER}"
+        --define "suse_python ${SUSE_PYTHON_BIN}"
+    )
+elif [ "${RMSTORY_SUSE_VERSIONED_PYTHON:-0}" = "1" ]; then
+    SUSE_PYVER="$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
+    EXTRA_DEFINES+=(
+        --define "suse_versioned_python 1"
+        --define "suse_pyver ${SUSE_PYVER}"
+        --define "suse_python python3"
+    )
 fi
 
 rpmbuild --define "_topdir ${RPMBUILD_ROOT}" --define "version ${VERSION}" \

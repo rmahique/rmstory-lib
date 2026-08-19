@@ -23,6 +23,7 @@ dist-packages/
 example-strings/
 example-stories/
 rmstory-stories/
+/rmstory/strings/
 *.sqlite3
 *.db
 

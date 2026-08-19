@@ -14,11 +14,14 @@ that module for why this matters for `rmstory translate`.
 
 A tagged span may nest inside another tagged span (requisites.md
 `== Functioning Logic` `=== Nesting`). Each still becomes its own
-TaggedSpan (own id, own lang/hist/no, own offsets) with `parent_id` set to
-the enclosing span's id; in the *parent's* own `content`, the nested
-span's raw markup is replaced by a placeholder (`<span id="...">`,
-self-closing) that `render.py` resolves at render time. This is what lets
-a nested span be translated/rendered independently of whatever the
+TaggedSpan (own id if it needs one -- see `attributes.needs_id` --, own
+lang/hist/no, own offsets) with `parent_id` set to the enclosing span's
+id (or `parent_tag_start`, when the enclosing span itself has no id); in
+the *parent's* own `content`, the nested span's raw markup is replaced by
+a placeholder (`<span id="...">`, self-closing, using the nested span's
+own id or -- when it doesn't need one -- its `tag_start` as a positional
+stand-in) that `render.py` resolves at render time. This is what lets a
+nested span be translated/rendered independently of whatever the
 parent's own translation says.
 """
 
@@ -26,6 +29,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Optional
 
+from .attributes import needs_id
 from .exceptions import ValidationError
 
 _TRACKED_ATTRS = ("lang", "hist", "no")
@@ -101,22 +105,36 @@ class _SpanScanner(HTMLParser):
                         "hist attribute requires a value (the story id)", self.path, line
                     )
                 nested_id = attrs_dict.get("id")
-                if not nested_id and self._strict:
-                    raise ValidationError(
-                        "nested tagged <span> requires an id attribute -- run "
-                        "`rmstory extract` to auto-assign one, or add it manually",
-                        self.path,
-                        line,
+                if not nested_id:
+                    span_needs_id = needs_id(
+                        lang=attrs_dict.get("lang"),
+                        hist=attrs_dict.get("hist"),
+                        no="no" in attrs_dict,
                     )
-                # In lenient mode (nested_id possibly None/empty), the
-                # placeholder text is disposable: this scan's results are
-                # only used to detect and patch missing ids, then thrown
-                # away in favor of a real, strict re-scan of the fixed
-                # file -- see cli.py's extract auto-id pre-pass.
-                top["buffer"].append(nested_placeholder(nested_id or ""))
+                    if span_needs_id and self._strict:
+                        raise ValidationError(
+                            "nested tagged <span> requires an id attribute -- run "
+                            "`rmstory extract` to auto-assign one, or add it manually",
+                            self.path,
+                            line,
+                        )
+                    # Either genuinely not required (never translatable or
+                    # story-tracked -- e.g. a bare `no` term -- so nothing
+                    # would ever look its id up), or lenient mode (extract's
+                    # pre-pass; this scan's results get thrown away in favor
+                    # of a real, strict re-scan of the fixed file either
+                    # way). `id` itself stays None in both cases -- never a
+                    # fake value that could leak into storage/output.
 
                 tag_text = self.get_starttag_text()
                 tag_start = self._offset()
+                # The placeholder embedded in the parent's content: the real
+                # id when there is one, otherwise a positional stand-in
+                # (tag_start) that's just as good for round-tripping through
+                # a translation unchanged, since nothing ever needs to
+                # *read* it as a meaningful id -- see render.py.
+                top["buffer"].append(nested_placeholder(nested_id or str(tag_start)))
+
                 self._stack.append(
                     {
                         "line": line,

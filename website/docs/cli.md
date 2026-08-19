@@ -3,7 +3,8 @@
 ## Install
 
 Quick setup to follow this walkthrough from a checkout. For the native
-`.deb`/RPM package instead, see the main repo's `README.md` `## Install`.
+`.deb`/RPM package instead, see the main repo's `README.md` `## Details`
+`### Distro packages`.
 
 ```bash
 git clone https://github.com/rmahique/multilang-lib.git
@@ -31,8 +32,10 @@ pip install -e .
 nested span is still a full span in its own right; see the main repo's
 `requisites.md` `=== Nesting` for how it's represented and resolved.
 
-Point the CLI at a filesystem-backed translation store and validate
-first:
+Point the CLI at a filesystem-backed translation store (optional — with
+neither variable set, `rmstory` defaults to a filesystem store rooted at
+`./rmstory/strings`; here we pick a different path explicitly) and
+validate first:
 
 ```console
 $ export MULTILANG_DB_BACKEND=filesystem
@@ -78,6 +81,7 @@ it's never translated, so `translate` never looks for one):
 $ rmstory translate examples/basic_usage.md --to es
 error: .../examples/basic_usage.md:3: no 'es' translation stored for id 'ch1.greeting'
 error: .../examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.reveal'
+hint: pass --engine <name> to machine-translate missing entries on the spot (available: baidu, claude-code, deepl, deepseek, gemini, google-translate, libretranslate, microsoft-translator, mistral, ollama, qwen), or store the translation yourself first via rmstory.storage.translations.store
 ```
 
 ## Auto-translating with `--engine`
@@ -87,8 +91,10 @@ instead of failing — it never overwrites one that's already stored,
 however it got there:
 
 ```bash
-pip install "rmstory[gemini]"   # or [deepl] / [google-translate]; the other
-                                 # three engines need no extra install at all
+# these three wrap vendor SDKs that aren't packaged for any distro (pip-only),
+# so this is a one-time manual step regardless of how rmstory itself was installed
+pip install "rmstory[gemini]"   # or [deepl] / [google-translate]; every other
+                                 # engine needs no extra install at all
 export GEMINI_API_KEY=...
 
 rmstory translate examples/basic_usage.md --to es --engine gemini
@@ -101,10 +107,24 @@ populate target-language rows right when you extract the source text:
 rmstory extract examples/basic_usage.md --engine gemini --to es --to fr
 ```
 
-Six engines are built in: `gemini`, `deepl`, `google-translate`,
-`microsoft-translator`, `libretranslate`, and `baidu` — see the
+Eleven engines are built in: `gemini`, `deepl`, `google-translate`,
+`microsoft-translator`, `libretranslate`, `baidu`, `claude-code`
+(shells out to the `claude` CLI instead of any API), `ollama` (local,
+open-weight, no API key), `deepseek`, `mistral`, and `qwen` — see the
 [GitHub repo](https://github.com/rmahique/rmstory-lib)'s `README.md` for
 each one's credentials and whether it needs an extra installed.
+
+## Generating story content
+
+`rmstory generate rewrite <paths...> --engine <name> [--theme "..."]`
+regenerates a file's translatable spans into a different story --
+same tagged-span structure, different plot/wording. `rmstory generate new
+--engine <name> --prompt "..."` writes a brand-new tagged-span document
+from a free-form prompt. Both need an LLM-backed engine (`gemini`,
+`claude-code`, `ollama`, `deepseek`, `mistral`, `qwen`) -- a
+translate-only engine has no free-text generation API to call. See the
+main repo's `README.md` `## Details` `### Story generation` for the full
+picture.
 
 Once translations are on file, `translate` renders a copy with every
 translated span spliced in at its exact position — everything else in

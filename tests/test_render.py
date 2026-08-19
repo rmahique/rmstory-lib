@@ -5,6 +5,27 @@ from rmstory.exceptions import ValidationError
 from rmstory.run import resolve_run
 
 
+def test_rewrite_spans_duplicate_id_each_span_renders_its_own_position(tmp_path):
+    # Two different, differently-positioned spans can legitimately share an
+    # id (e.g. extract's content-match reuse). Internal caching must be
+    # keyed by something per-instance (tag_start), not the shared id --
+    # otherwise the second span would return the first one's cached bytes.
+    path = tmp_path / "a.md"
+    path.write_text(
+        '<span lang="en" id="dup">First</span> middle '
+        '<span lang="en" id="dup">Second</span>',
+        encoding="utf-8",
+    )
+    spans = resolve_run([path])
+
+    result = render.rewrite_spans(path, spans, {})
+
+    assert result == (
+        '<span lang="en" id="dup">First</span> middle '
+        '<span lang="en" id="dup">Second</span>'
+    )
+
+
 def test_rewrite_spans_preserves_everything_else(tmp_path):
     path = tmp_path / "a.md"
     path.write_text(
@@ -38,6 +59,30 @@ def test_rewrite_spans_preserves_nested_markup_in_untouched_spans(tmp_path):
     result = render.rewrite_spans(path, spans, {})
 
     assert result == '<span lang="en" id="a">Hello <b>world</b></span>'
+
+
+def test_rewrite_spans_translating_parent_with_id_less_nested_span(tmp_path):
+    # The nested span needs no id (bare `no`, no lang/hist) -- its
+    # placeholder in the parent's stored translation uses its tag_start as
+    # a positional stand-in instead, and still resolves correctly.
+    path = tmp_path / "a.md"
+    path.write_text(
+        '<span lang="en" id="para">Once upon a time, <span no>Aldric</span> ventured forth.</span>',
+        encoding="utf-8",
+    )
+    spans = resolve_run([path])
+    inner = next(s for s in spans if s.id is None)
+
+    result = render.rewrite_spans(
+        path,
+        spans,
+        {"para": ('Había una vez, <span id="{}"/> se aventuró.'.format(inner.tag_start), "es")},
+    )
+
+    assert result == (
+        '<span lang="es" id="para">Había una vez, '
+        '<span no>Aldric</span> se aventuró.</span>'
+    )
 
 
 def test_rewrite_spans_translating_parent_keeps_untouched_nested_span_verbatim(tmp_path):
@@ -126,9 +171,8 @@ def test_assemble_story_resolves_nested_placeholder(tmp_path):
         encoding="utf-8",
     )
     spans = resolve_run([path])
-    spans_by_id = {span.id: span for span in spans}
 
-    text, missing = render.assemble_story(spans_by_id, ["para"])
+    text, missing = render.assemble_story(spans, ["para"])
 
     assert text == "Once upon a time, Aldric ventured forth."
     assert missing == []
@@ -141,9 +185,8 @@ def test_assemble_story_orders_and_flags_missing(tmp_path):
         encoding="utf-8",
     )
     spans = resolve_run([path])
-    spans_by_id = {span.id: span for span in spans}
 
-    text, missing = render.assemble_story(spans_by_id, ["y", "x", "z"])
+    text, missing = render.assemble_story(spans, ["y", "x", "z"])
 
     assert text == "Second\n\nFirst"
     assert missing == ["z"]

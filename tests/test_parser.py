@@ -89,11 +89,38 @@ def test_doubly_nested_span(tmp_path):
     assert by_id["c"].content == "z"
 
 
-def test_nested_span_without_id_hard_fails(tmp_path):
+def test_nested_translatable_span_without_id_hard_fails(tmp_path):
+    # lang is a real tag -> translatable -> id is genuinely required.
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer">a <span lang="en">b</span> c</span>',
+    )
+    with pytest.raises(ValidationError):
+        scan_file(path)
+
+
+def test_nested_bare_no_span_without_id_does_not_hard_fail(tmp_path):
+    # no lang, no hist -> never translatable, never story-tracked ->
+    # nothing would ever look its id up, so none is required.
     path = _write(
         tmp_path,
         "a.md",
         '<span lang="en" id="outer">a <span no>b</span> c</span>',
+    )
+    spans = scan_file(path)
+    inner = next(s for s in spans if s.id is None)
+    assert inner.content == "b"
+    assert inner.no is True
+
+
+def test_nested_nolang_hist_span_without_id_hard_fails(tmp_path):
+    # nolang + hist (no `no`) -> not translatable, but still story-tracked
+    # -> a story index needs a stable id to reference it by.
+    path = _write(
+        tmp_path,
+        "a.md",
+        '<span lang="en" id="outer">a <span lang="nolang" hist="arc">b</span> c</span>',
     )
     with pytest.raises(ValidationError):
         scan_file(path)

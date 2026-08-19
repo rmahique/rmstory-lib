@@ -9,6 +9,11 @@ other applications call directly:
     translate_text("Hello, traveler.", "en", "es", engine="microsoft-translator")
     translate_text("Hello, traveler.", "en", "es", engine="libretranslate")
     translate_text("Hello, traveler.", "en", "zh", engine="baidu")
+    translate_text("Hello, traveler.", "en", "es", engine="claude-code")
+    translate_text("Hello, traveler.", "en", "es", engine="ollama")
+    translate_text("Hello, traveler.", "en", "es", engine="deepseek")
+    translate_text("Hello, traveler.", "en", "es", engine="mistral")
+    translate_text("Hello, traveler.", "en", "es", engine="qwen")
 
 This is independent of the CLI and of translation storage -- it's a plain
 function other code can import and call on its own, the same way
@@ -17,11 +22,16 @@ multilang-lib's `db_connector` is independent of any particular caller.
 
 from .baidu import BaiduEngine
 from .base import TranslationEngine
+from .claude_code import ClaudeCodeEngine
 from .deepl import DeepLEngine
+from .deepseek import DeepSeekEngine
 from .gemini import GeminiEngine
 from .google_translate import GoogleTranslateEngine
 from .libretranslate import LibreTranslateEngine
 from .microsoft import MicrosoftTranslatorEngine
+from .mistral import MistralEngine
+from .ollama import OllamaEngine
+from .qwen import QwenEngine
 
 _ENGINES = {
     "gemini": GeminiEngine,
@@ -30,6 +40,11 @@ _ENGINES = {
     "microsoft-translator": MicrosoftTranslatorEngine,
     "libretranslate": LibreTranslateEngine,
     "baidu": BaiduEngine,
+    "claude-code": ClaudeCodeEngine,
+    "ollama": OllamaEngine,
+    "deepseek": DeepSeekEngine,
+    "mistral": MistralEngine,
+    "qwen": QwenEngine,
 }
 
 
@@ -94,11 +109,16 @@ def translate_text(text, from_lang, to_lang, engine="gemini", **engine_config):
 
 __all__ = [
     "BaiduEngine",
+    "ClaudeCodeEngine",
     "DeepLEngine",
+    "DeepSeekEngine",
     "GeminiEngine",
     "GoogleTranslateEngine",
     "LibreTranslateEngine",
     "MicrosoftTranslatorEngine",
+    "MistralEngine",
+    "OllamaEngine",
+    "QwenEngine",
     "TranslationEngine",
     "get_engine",
     "register_engine",

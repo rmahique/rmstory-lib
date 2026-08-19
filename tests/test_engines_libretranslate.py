@@ -92,3 +92,7 @@ def test_get_engine_uses_registry():
         http_post=lambda url, payload: {"translatedText": "Hola"},
     )
     assert engine.translate("Hello", "en", "es") == "Hola"
+
+
+def test_does_not_support_generation():
+    assert LibreTranslateEngine.SUPPORTS_GENERATION is False

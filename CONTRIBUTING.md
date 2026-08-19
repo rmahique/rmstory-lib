@@ -3,11 +3,12 @@
 ## Before you start
 
 For actually editing rmstory and iterating on tests, use the
-contributor/live-editing setup in `README.md`'s `## Install` — an
-editable pip install of both multilang-lib and rmstory, so changes take
-effect immediately without rebuilding a package. The native `.deb`/RPM
-packages documented in that same section (and `packaging/README.md`) are
-for *installing* rmstory, not for developing it.
+editable-install setup in `README.md`'s `## Quick start` — an editable
+pip install of both multilang-lib and rmstory, so changes take effect
+immediately without rebuilding a package. The native `.deb`/RPM packages
+documented in `README.md`'s `## Details` `### Distro packages` (and
+`packaging/README.md`) are for *installing* rmstory, not for developing
+it.
 
 
 ## Before opening a PR
@@ -24,9 +25,9 @@ against whether it introduces anything *beyond* that baseline.
 
 ## Adding a translation engine
 
-This is the most likely kind of contribution right now — six engines
+This is the most likely kind of contribution right now — eleven engines
 exist (`rmstory/engines/`), each following the same shape. Adding a
-seventh:
+twelfth:
 
 1. New module `rmstory/engines/<name>.py`, subclassing `TranslationEngine`
    (`rmstory/engines/base.py`) and implementing
@@ -36,8 +37,9 @@ seventh:
    installed (see `gemini.py`/`google_translate.py` for the pattern).
 3. Accept an injection parameter for whatever does the actual call
    (`client=` for an SDK object, `http_post=`/`http_get=` for a plain
-   REST call) so tests never need real credentials, a real SDK, or
-   network access. Every existing engine's test file
+   REST call, `run=` for a subprocess call — see `claude_code.py`) so
+   tests never need real credentials, a real SDK, real network access, or
+   an external binary on PATH. Every existing engine's test file
    (`tests/test_engines_*.py`) follows this — copy the closest match
    rather than inventing a new testing style.
 4. Fall back to an environment variable for credentials; never require
@@ -58,12 +60,31 @@ seventh:
    (`[project.optional-dependencies]`) — never make one engine's
    dependency a hard dependency of rmstory itself, or bundle it into
    another engine's extra.
-9. Document it in `README.md`'s `## Machine translation engines` section:
-   env vars, credential shape, whether it needs an extra installed. Also
-   update every other place the engine list/count is duplicated:
-   `website/docs/cli.md`'s "Six engines are built in: ..." and
-   `website/docs/index.md`'s "all six translation engines (...)" intro
-   line — both will read wrong otherwise.
+9. If (and only if) it's backed by a general-purpose LLM rather than a
+   translate-this-string-only API, set `SUPPORTS_GENERATION = True` and
+   implement `generate(prompt)` too — see `rmstory/generation.py` and any
+   of `gemini.py`/`claude_code.py`/`ollama.py`/`deepseek.py`/
+   `mistral.py`/`qwen.py` for the pattern (usually just factoring the
+   existing translate-call plumbing into a shared `_complete(prompt)` and
+   having both `translate()` and `generate()` call it). Leave it
+   unset/False (the `TranslationEngine` default) for anything that's only
+   ever a translation API — `deepl`, `google-translate`,
+   `microsoft-translator`, `libretranslate`, `baidu` have no free-text
+   generation call to make.
+10. Document it in `README.md`'s `## Details` `### Machine translation
+    engines` section:
+    env vars, credential shape, whether it needs an extra installed. Also
+    update every other place the engine list/count is duplicated:
+    `website/docs/cli.md`'s "Eleven engines are built in: ..." and
+    `website/docs/index.md`'s "all eleven translation engines (...)" intro
+    line, `requisites.md`'s `generate rewrite`/`generate new` bullets (if
+    `SUPPORTS_GENERATION` changed), `packaging/debian/control` and
+    `packaging/rpm/rmstory.spec`'s `%description` — all will read wrong
+    otherwise. The `--engine` hint text in `cli.py`'s missing-translation
+    error lists registered engines automatically
+    (`sorted(engines._ENGINES)`), so no code change there, but the two
+    doc transcripts that capture that exact hint output verbatim
+    (`README.md`, `website/docs/cli.md`) still need re-copying.
 
 ## Changing `lang`/`hist`/`no` behavior
 

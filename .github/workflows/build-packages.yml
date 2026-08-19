@@ -1,8 +1,9 @@
 # Builds native packages for every distro documented in
 # packaging/README.md (Debian bookworm, Fedora latest, openSUSE
-# Tumbleweed, openSUSE Leap 16 -- openSUSE Leap 15 is deliberately not
-# supported, see that file), and uploads each as a build artifact named
-# rmstory-<combo.name>. Version comes from scripts/compute-version.sh:
+# Tumbleweed, openSUSE Leap 16, SLES 15 SP7 -- openSUSE Leap 15 is
+# deliberately not supported, see that file), and uploads each as a
+# build artifact named rmstory-<combo.name>. Version comes from
+# scripts/compute-version.sh:
 # the exact tag when HEAD is a release, otherwise <latest tag or
 # pyproject.toml's version> plus today's date. Each package gets a
 # matching .sha512 file (see packaging/build-deb.sh /
@@ -71,7 +72,11 @@ jobs:
             collect: find "$HOME/rpmbuild/RPMS" "$HOME/rpmbuild/SRPMS" -name "*.rpm" -o -name "*.sha512" | xargs -I{} cp {} dist-packages/
           - name: opensuse-leap-16
             distro: opensuse-leap-16
-            build: RMSTORY_LEAP_VERSIONED_PYTHON=1 packaging/build-rpm.sh
+            build: RMSTORY_SUSE_VERSIONED_PYTHON=1 packaging/build-rpm.sh
+            collect: find "$HOME/rpmbuild/RPMS" "$HOME/rpmbuild/SRPMS" -name "*.rpm" -o -name "*.sha512" | xargs -I{} cp {} dist-packages/
+          - name: sles-15-sp7
+            distro: sles-15-sp7
+            build: RMSTORY_SUSE_PYVER=311 packaging/build-rpm.sh
             collect: find "$HOME/rpmbuild/RPMS" "$HOME/rpmbuild/SRPMS" -name "*.rpm" -o -name "*.sha512" | xargs -I{} cp {} dist-packages/
     steps:
       # Checked out into a named subdirectory, not $GITHUB_WORKSPACE
@@ -83,9 +88,18 @@ jobs:
       # in the container's ephemeral filesystem, gone the moment it
       # exits -- lost exactly the way it was when this was first tried
       # by hand against a plain checkout.
+      # fetch-depth: 0 -- actions/checkout's default (fetch-depth: 1) fetches
+      # only the single triggering commit and creates no local tag refs at
+      # all, so scripts/compute-version.sh's `git describe --tags` finds
+      # nothing and silently falls back to pyproject.toml's static version
+      # (every release since 1.0.2 shipped packages versioned 0.1.0+<date>
+      # instead of the actual pushed tag until this was caught -- verified
+      # by reproducing the exact failure locally with a depth-1 fetch and
+      # confirming a full fetch fixes it).
       - uses: actions/checkout@v7
         with:
           path: rmstory-lib
+          fetch-depth: 0
       - name: Build the ${{ matrix.combo.distro }} packaging image
         run: >
           docker build

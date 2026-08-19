@@ -58,3 +58,26 @@ def test_missing_id_hard_fails(tmp_path):
     (tmp_path / "a.md").write_text('<span lang="es">y</span>', encoding="utf-8")
     with pytest.raises(ValidationError):
         resolve_run([tmp_path])
+
+
+def test_top_level_inert_span_missing_id_does_not_hard_fail(tmp_path):
+    # lang="nolang" + no, no hist -> never translatable, never
+    # story-tracked -> nothing needs its id, so it's not required.
+    (tmp_path / "a.md").write_text(
+        '<span lang="nolang" no>Kubernetes</span>', encoding="utf-8"
+    )
+    spans = resolve_run([tmp_path])
+    assert len(spans) == 1
+    assert spans[0].id is None
+    assert spans[0].translatable is False
+    assert spans[0].story_id is None
+
+
+def test_top_level_story_tracked_nolang_span_missing_id_hard_fails(tmp_path):
+    # not translatable, but hist (uncancelled by no) still needs a stable
+    # id for the story index to reference.
+    (tmp_path / "a.md").write_text(
+        '<span lang="nolang" hist="arc">y</span>', encoding="utf-8"
+    )
+    with pytest.raises(ValidationError):
+        resolve_run([tmp_path])

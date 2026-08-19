@@ -27,6 +27,36 @@ class _FakeClient:
         self.models = _FakeModels(response_text)
 
 
+class _FlakyModels:
+    """Fails with a 503 (matching a real transient Gemini overload response)
+    on the first call, then succeeds -- exercises the actual retry wiring
+    in GeminiEngine.translate(), not just call_with_retry in isolation."""
+
+    def __init__(self, response_text="Hola"):
+        self.response_text = response_text
+        self.calls = 0
+
+    def generate_content(self, model, contents):
+        self.calls += 1
+        if self.calls == 1:
+            exc = Exception("503 UNAVAILABLE")
+            exc.code = 503
+            raise exc
+        return _FakeResponse(self.response_text)
+
+
+def test_translate_retries_transient_failure_then_succeeds(monkeypatch):
+    monkeypatch.setattr("rmstory.engines.base.time.sleep", lambda seconds: None)
+    client = _FakeClient()
+    client.models = _FlakyModels(response_text="Hola, viajero.")
+    engine = GeminiEngine(client=client)
+
+    result = engine.translate("Hello, traveler.", "en", "es")
+
+    assert result == "Hola, viajero."
+    assert client.models.calls == 2
+
+
 def test_translate_with_injected_client():
     client = _FakeClient(response_text="Hola, viajero.")
     engine = GeminiEngine(client=client)
@@ -124,6 +154,33 @@ def test_project_alone_implies_vertex_mode(monkeypatch):
     assert kwargs == {"vertexai": True, "project": "my-gcp-project", "location": "us-central1"}
 
 
+def test_api_key_wins_over_project_when_both_present(monkeypatch):
+    # GOOGLE_CLOUD_PROJECT is often already set for unrelated reasons (gcloud
+    # config, the google-translate engine); it must not silently force Vertex
+    # AI's ADC requirement when a working API key is also available.
+    monkeypatch.delenv("GOOGLE_GENAI_USE_VERTEXAI", raising=False)
+
+    kwargs = GeminiEngine._resolve_client_kwargs("ai-studio-key", "my-gcp-project", None, None)
+
+    assert kwargs == {"api_key": "ai-studio-key"}
+
+
+def test_explicit_vertexai_flag_wins_even_with_api_key_present():
+    kwargs = GeminiEngine._resolve_client_kwargs(
+        "ai-studio-key", "my-gcp-project", "europe-west1", True
+    )
+
+    assert kwargs == {"vertexai": True, "project": "my-gcp-project", "location": "europe-west1"}
+
+
+def test_google_genai_use_vertexai_env_wins_even_with_api_key_present(monkeypatch):
+    monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+
+    kwargs = GeminiEngine._resolve_client_kwargs("ai-studio-key", "my-gcp-project", None, None)
+
+    assert kwargs == {"vertexai": True, "project": "my-gcp-project", "location": "us-central1"}
+
+
 def test_no_credentials_raises_value_error(monkeypatch):
     for var in (
         "GEMINI_API_KEY",
@@ -140,3 +197,24 @@ def test_no_credentials_raises_value_error(monkeypatch):
 def test_vertex_mode_without_project_raises_value_error():
     with pytest.raises(ValueError):
         GeminiEngine._resolve_client_kwargs(None, None, None, True)
+
+
+def test_supports_generation():
+    assert GeminiEngine.SUPPORTS_GENERATION is True
+
+
+def test_generate_sends_raw_prompt_and_returns_text():
+    client = _FakeClient(response_text="Once upon a time...")
+    engine = GeminiEngine(client=client)
+
+    result = engine.generate("write a short story")
+
+    assert result == "Once upon a time..."
+    model, contents = client.models.calls[0]
+    assert contents == "write a short story"
+
+
+def test_generate_empty_response_raises_translation_error():
+    engine = GeminiEngine(client=_FakeClient(response_text=""))
+    with pytest.raises(TranslationError):
+        engine.generate("write a story")

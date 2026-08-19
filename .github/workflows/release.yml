@@ -1,5 +1,5 @@
 # Triggered by pushing a version tag (this repo's tags have no "v"
-# prefix, e.g. "1.0", not "v1.0"). Builds the same 4 packages
+# prefix, e.g. "1.0", not "v1.0"). Builds the same 5 packages
 # build-packages.yml builds on every push (via that file's
 # `workflow_call` trigger, so the matrix can't drift between the two),
 # then attaches every .deb/.rpm/.sha512 to a GitHub Release for that tag
@@ -8,11 +8,12 @@
 #
 # Filenames are prefixed with their combo name (e.g.
 # opensuse-leap-16-python3-rmstory-...rpm) before upload: rpmbuild's
-# %{?dist} tag is empty on openSUSE, so the Tumbleweed and Leap 16 RPMs
-# for the same version build with identical filenames (verified locally
-# -- both produced exactly `python3-rmstory-0.1.0^<date>-1.noarch.rpm`)
-# and would silently overwrite each other once flattened into one
-# release's asset list without this.
+# %{?dist} tag is empty on openSUSE/SLES, so the Tumbleweed, Leap 16, and
+# SLES 15 SP7 RPMs for the same version all build with identical
+# filenames (verified locally -- Tumbleweed and Leap 16 both produced
+# exactly `python3-rmstory-0.1.0^<date>-1.noarch.rpm`) and would
+# silently overwrite each other once flattened into one release's asset
+# list without this.
 
 name: Release
 

@@ -17,10 +17,11 @@ Translations are stored via
 [multilang-lib](https://github.com/rmahique/multilang-lib); a story is a
 lightweight ordered-id index layered on top, not a second content store.
 
-This site is usage examples only. For the full CLI reference, all six
+This site is usage examples only. For the full CLI reference, all eleven
 translation engines (`gemini`, `deepl`, `google-translate`,
-`microsoft-translator`, `libretranslate`, `baidu`), and install/test
-instructions, see the [GitHub repo](https://github.com/rmahique/rmstory-lib)
+`microsoft-translator`, `libretranslate`, `baidu`, `claude-code`,
+`ollama`, `deepseek`, `mistral`, `qwen`), and
+install/test instructions, see the [GitHub repo](https://github.com/rmahique/rmstory-lib)
 — its `README.md` and `requisites.md` (the spec this implementation
 follows).
 
@@ -29,6 +30,8 @@ follows).
 === "CLI"
 
     ```bash
+    # optional -- rmstory defaults to a filesystem store at ./rmstory/strings
+    # with neither variable set; this picks a different path explicitly
     export MULTILANG_DB_BACKEND=filesystem
     export MULTILANG_DB_PATH=./example-strings
 
@@ -53,8 +56,7 @@ follows).
 
     stories.merge("./rmstory-stories", "villain-arc", ["ch1.reveal"])
     ordered_ids = stories.load("./rmstory-stories", "villain-arc")
-    spans_by_id = {span.id: span for span in spans}
-    text, _missing = render.assemble_story(spans_by_id, ordered_ids)
+    text, _missing = render.assemble_story(spans, ordered_ids)
     print(text)
     # -> The mayor — Aldric's own uncle — was the villain all along.
     ```

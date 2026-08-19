@@ -89,3 +89,7 @@ def test_get_engine_uses_registry():
 
     engine = get_engine("microsoft-translator", api_key="fake-key", http_post=fake_http_post)
     assert engine.translate("Hello", "en", "es") == "Hola"
+
+
+def test_does_not_support_generation():
+    assert MicrosoftTranslatorEngine.SUPPORTS_GENERATION is False

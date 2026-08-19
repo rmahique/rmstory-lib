@@ -1,4 +1,5 @@
 import sys
+import types
 
 import pytest
 
@@ -149,7 +150,49 @@ def test_no_credentials_raises_value_error(monkeypatch):
         GoogleTranslateEngine._resolve_credentials(None, None)
 
 
+def test_api_key_wins_over_project_when_both_present(monkeypatch):
+    # GOOGLE_CLOUD_PROJECT is often already set for unrelated reasons (gcloud
+    # config, the gemini engine's own Vertex mode); it must not silently
+    # force v3's ADC requirement when a working API key is also available.
+    engine = GoogleTranslateEngine(
+        api_key="ai-key", project="my-project", http_post=lambda url, payload: {}
+    )
+    assert engine._mode == "v2"
+
+
+def test_client_forces_v3_even_with_api_key_present():
+    client = _FakeV3Client(response_text="Hola")
+    engine = GoogleTranslateEngine(api_key="ai-key", project="my-project", client=client)
+    assert engine._mode == "v3"
+    assert engine.translate("Hello", "en", "es") == "Hola"
+
+
+def test_v3_auth_failure_at_construction_raises_clean_value_error(monkeypatch):
+    # TranslationServiceClient() validates Application Default Credentials
+    # eagerly at construction time (unlike the gemini engine's lazy-auth
+    # SDK) -- a raw google.auth.exceptions.DefaultCredentialsError here must
+    # be caught and turned into a clean ValueError, not left to traceback
+    # uncaught all the way to the CLI's top level.
+    fake_module = types.ModuleType("google.cloud.translate")
+
+    class _FailingClient:
+        def __init__(self):
+            raise RuntimeError("Your default credentials were not found.")
+
+    fake_module.TranslationServiceClient = _FailingClient
+    monkeypatch.setitem(sys.modules, "google.cloud.translate", fake_module)
+    monkeypatch.setitem(sys.modules, "google.cloud", sys.modules.get("google.cloud", types.ModuleType("google.cloud")))
+    monkeypatch.setitem(sys.modules, "google", sys.modules.get("google", types.ModuleType("google")))
+
+    with pytest.raises(ValueError, match="authenticate"):
+        GoogleTranslateEngine(project="my-project")
+
+
 def test_get_engine_uses_registry():
     client = _FakeV3Client(response_text="Hola")
     engine = get_engine("google-translate", project="my-project", client=client)
     assert engine.translate("Hello", "en", "es") == "Hola"
+
+
+def test_does_not_support_generation():
+    assert GoogleTranslateEngine.SUPPORTS_GENERATION is False

@@ -110,3 +110,7 @@ def test_get_engine_uses_registry():
         http_get=lambda url: {"trans_result": [{"dst": "你好"}]},
     )
     assert engine.translate("Hello", "en", "zh") == "你好"
+
+
+def test_does_not_support_generation():
+    assert BaiduEngine.SUPPORTS_GENERATION is False
