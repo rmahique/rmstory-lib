@@ -3,6 +3,8 @@
 Translates and recombines stories authored as tagged `<span>`s in
 markdown/HTML files.
 
+**Docs & examples site:** [rmahique.github.io/rmstory-lib](https://rmahique.github.io/rmstory-lib/)
+
 ## Index
 
 - [Introduction](#introduction)
@@ -29,7 +31,7 @@ duplicating the source content per language or per variant.
 Translations are stored via
 [multilang-lib](https://github.com/rmahique/multilang-lib), keyed by
 each tagged span's `id` — rmstory itself holds no translation content.
-Machine translation (`rmstory.engines`, eleven built-in engines) and
+Machine translation (`rmstory.engines`, twelve built-in engines) and
 LLM-backed story generation (`rmstory.generation`) are both opt-in, on
 top of that same storage.
 
@@ -130,8 +132,9 @@ rmstory validate <paths...>                          # parse + validate only, no
 rmstory extract <paths...> [--prune] [--engine <name> --to <lang> [--to <lang> ...]]
 rmstory translate <paths...> --to <lang> [--from <lang>] [--out DIR] [--engine <name>]
 rmstory story <paths...> --story <id> [--out FILE]
-rmstory generate rewrite <paths...> --engine <name> [--theme "..."] [--out DIR]
-rmstory generate new --engine <name> --prompt "..." [--lang <lang>] [--out FILE]
+rmstory engines                                       # list engines + whether each supports generation
+rmstory generate rewrite <paths...> [--engine <name>] [--theme "..."] [--out DIR]
+rmstory generate new [--engine <name>] --prompt "..." [--lang <lang>] [--out FILE]
 ```
 
 Translation storage is configured the same way multilang-lib is
@@ -199,7 +202,26 @@ rmstory translate examples/basic_usage.md --to es --engine gemini
 [Story generation](#story-generation) below) are a separate, opt-in
 capability layered on top of the same `--engine` registry — they need an
 LLM-backed engine (`gemini`, `claude-code`, `ollama`, `deepseek`,
-`mistral`, `qwen`), not a translate-only one.
+`mistral`, `qwen`, `kimi`), not a translate-only one. `--engine` is
+required for both, but omitting it doesn't just fail — it prints the
+list of generation-capable engines by name, the same list `rmstory
+engines` shows:
+
+```console
+$ rmstory engines
+baidu                 translate only
+claude-code           translate + generate
+deepl                 translate only
+deepseek              translate + generate
+gemini                translate + generate
+google-translate      translate only
+kimi                  translate + generate
+libretranslate        translate only
+microsoft-translator  translate only
+mistral               translate + generate
+ollama                translate + generate
+qwen                  translate + generate
+```
 
 ### Walkthrough
 
@@ -262,7 +284,7 @@ missing — rather than shipping a document that's silently half-English:
 $ rmstory translate examples/basic_usage.md --to es
 error: .../rmstory-lib/examples/basic_usage.md:3: no 'es' translation stored for id 'ch1.greeting'
 error: .../rmstory-lib/examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.reveal'
-hint: pass --engine <name> to machine-translate missing entries on the spot (available: baidu, claude-code, deepl, deepseek, gemini, google-translate, libretranslate, microsoft-translator, mistral, ollama, qwen), or store the translation yourself first via rmstory.storage.translations.store
+hint: pass --engine <name> to machine-translate missing entries on the spot (available: baidu, claude-code, deepl, deepseek, gemini, google-translate, kimi, libretranslate, microsoft-translator, mistral, ollama, qwen), or store the translation yourself first via rmstory.storage.translations.store
 ```
 
 (`ch1.hero-name` isn't listed — it was never translatable, so `translate`
@@ -320,10 +342,10 @@ translate_text("Hello, traveler.", "en", "es", engine="gemini")
 ```
 
 Engines are pluggable by name through a small registry
-(`rmstory.engines.register_engine`). Eleven are built in: `"gemini"`,
+(`rmstory.engines.register_engine`). Twelve are built in: `"gemini"`,
 `"deepl"`, `"google-translate"`, `"microsoft-translator"`,
 `"libretranslate"`, `"baidu"`, `"claude-code"`, `"ollama"`, `"deepseek"`,
-`"mistral"`, and `"qwen"`. The first three each wrap their
+`"mistral"`, `"qwen"`, and `"kimi"`. The first three each wrap their
 vendor's own SDK (`google-genai`, `deepl`, `google-cloud-translate`) —
 none of the three is packaged for any distro, pip-only, so this one-time
 install step is required no matter how you installed rmstory itself
@@ -339,11 +361,11 @@ pip install "rmstory[google-translate]"  # google-cloud-translate (only needed
 ```
 
 `microsoft-translator`, `libretranslate`, `baidu`, `ollama`, `deepseek`,
-`mistral`, and `qwen` need nothing extra at all — every one of them is a
-plain REST call made with the standard library, so those seven work
-immediately after any install method.
+`mistral`, `qwen`, and `kimi` need nothing extra at all — every one of
+them is a plain REST call made with the standard library, so those eight
+work immediately after any install method.
 
-All eleven engines automatically retry a transient failure (429/5xx, a
+All twelve engines automatically retry a transient failure (429/5xx, a
 connection-level timeout/reset, or claude-code's subprocess timeout) a
 few times with exponential backoff before giving up — a momentary "high
 demand" or rate-limit response from the vendor's API doesn't abort an
@@ -476,31 +498,35 @@ export RMSTORY_OLLAMA_MODEL=llama3.1
 export RMSTORY_OLLAMA_URL=http://localhost:11434   # only if not the local default
 ```
 
-**deepseek**, **mistral**, and **qwen** — each is a hosted, official,
-OpenAI-compatible chat completions API for an open-weight model family
-(DeepSeek-V3/R1, Mistral/Mixtral, Qwen), authenticated with a plain
-Bearer API key. No SDK needed for any of the three — same plain REST
-call as `libretranslate`, just with an `Authorization` header.
+**deepseek**, **mistral**, **qwen**, and **kimi** — each is a hosted,
+official, OpenAI-compatible chat completions API for an open-weight
+model family (DeepSeek-V3/R1, Mistral/Mixtral, Qwen, Kimi K2),
+authenticated with a plain Bearer API key. No SDK needed for any of the
+four — same plain REST call as `libretranslate`, just with an
+`Authorization` header.
 
 ```bash
 export DEEPSEEK_API_KEY=...    # https://platform.deepseek.com
 export MISTRAL_API_KEY=...     # https://console.mistral.ai
 export DASHSCOPE_API_KEY=...   # https://dashscope.console.aliyun.com -- qwen
+export MOONSHOT_API_KEY=...    # https://platform.moonshot.ai -- kimi
 ```
 
-`qwen` defaults to DashScope's international endpoint
-(`RMSTORY_QWEN_URL`) — override it to
-`https://dashscope.aliyuncs.com/compatible-mode/v1` for a mainland China
+`qwen` and `kimi` each default to their vendor's international endpoint
+(`RMSTORY_QWEN_URL`, `RMSTORY_KIMI_URL`) — override them to
+`https://dashscope.aliyuncs.com/compatible-mode/v1` or
+`https://api.moonshot.cn/v1` respectively for a mainland China
 account/key instead. `mistral` defaults to `mistral-large-latest`
 (`RMSTORY_MISTRAL_MODEL`), Mistral's own always-current alias, same
-reasoning as gemini's `DEFAULT_MODEL`. `deepseek` defaults to
+reasoning as gemini's `DEFAULT_MODEL`; `kimi` similarly defaults to
+`kimi-latest` (`RMSTORY_KIMI_MODEL`). `deepseek` defaults to
 `deepseek-chat` (`RMSTORY_DEEPSEEK_MODEL`; use `deepseek-reasoner` for
 R1).
 
 Called directly like this, it's a building block for whatever your own
 code needs — filling in the missing `es` row from the walkthrough above
 without typing the translation by hand (swap `engine="gemini"` for any of
-the other nine freely — same call shape either way):
+the other ten freely — same call shape either way):
 
 ```python
 from rmstory.engines import translate_text
@@ -522,7 +548,7 @@ embedding rmstory as a library.
 `--engine` flag, but for producing story *content* with an LLM instead of
 translating existing content. Only an engine backed by a general-purpose
 LLM can do this (`gemini`, `claude-code`, `ollama`, `deepseek`, `mistral`,
-`qwen` — `TranslationEngine.SUPPORTS_GENERATION`); a translate-only
+`qwen`, `kimi` — `TranslationEngine.SUPPORTS_GENERATION`); a translate-only
 engine (`deepl`, `google-translate`, `microsoft-translator`,
 `libretranslate`, `baidu`) has no free-text generation API to call and is
 rejected up front, both from the CLI and from
@@ -600,9 +626,19 @@ default Python is already current, so it doesn't hit either problem in
 the first place). `.github/workflows/build-packages.yml` builds all five
 on every push as workflow artifacts; pushing a version tag
 (`release.yml`) additionally attaches them to that tag's [GitHub
-Release](https://github.com/rmahique/rmstory-lib/releases). No release
-with built packages is published yet — until then, use the pip
-live-editing setup in [Quick start](#quick-start) to get rmstory itself.
+Release](https://github.com/rmahique/rmstory-lib/releases).
+
+**Latest packages** — regenerated by `release.yml` right after every
+release is published (`scripts/update-packages-table.py`), so this table
+always matches what's actually attached to the
+[latest release](https://github.com/rmahique/rmstory-lib/releases/latest);
+never hand-edit it, a stale table is worse than an obviously-missing one:
+
+<!-- PACKAGES_TABLE_START -->
+| Distribution | Version | Package |
+| --- | --- | --- |
+| _no release with built packages is published yet_ | — | use the pip live-editing setup in [Quick start](#quick-start) instead |
+<!-- PACKAGES_TABLE_END -->
 
 Every package declares `python3-multilang` as a runtime dependency.
 Install the matching multilang-lib package (above) alongside rmstory's.

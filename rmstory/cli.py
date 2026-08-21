@@ -5,8 +5,9 @@ The `rmstory` command-line utility (requisites.md `== CLI utility`).
     rmstory translate <paths...> --to <lang> [--from <lang>] [--out DIR] [--engine <name>]
     rmstory story <paths...> --story <story-id> [--out FILE]
     rmstory validate <paths...>
-    rmstory generate rewrite <paths...> --engine <name> [--theme "..."] [--out DIR]
-    rmstory generate new --engine <name> --prompt "..." [--lang <lang>] [--out FILE]
+    rmstory engines
+    rmstory generate rewrite <paths...> [--engine <name>] [--theme "..."] [--out DIR]
+    rmstory generate new [--engine <name>] --prompt "..." [--lang <lang>] [--out FILE]
 
 `--out` is required for `translate` when more than one file is scanned
 (output mirrors the input files' directory structure under it); with a
@@ -44,10 +45,12 @@ later as unreviewed machine output (status stays multilang-lib's default,
 "draft").
 
 `generate` (see rmstory.generation) needs an LLM-backed `--engine` --
-gemini, claude-code, ollama, deepseek, mistral, or qwen; a
+gemini, claude-code, ollama, deepseek, mistral, qwen, or kimi; a
 translate-only engine (deepl, google-translate, microsoft-translator,
 libretranslate, baidu) has no free-text generation API to call and is
-rejected up front. `generate rewrite` regenerates every translatable
+rejected up front. Omitting `--engine` on either `generate` subcommand
+(or running `rmstory engines` directly) prints every registered engine
+and whether it supports generation. `generate rewrite` regenerates every translatable
 span's text into a different story -- same tagged-span structure, ids,
 and nested placeholders, different plot/wording -- writing the result the
 same way `translate` does (single file to stdout unless `--out`, `--out`
@@ -80,6 +83,11 @@ def _build_engine(name):
 
 
 def _build_generation_engine(name):
+    if name is None:
+        raise RmstoryError(
+            "--engine is required -- generation-capable engines: {} (see "
+            "`rmstory engines`)".format(", ".join(sorted(generation.generation_capable_engines())))
+        )
     engine = _build_engine(name)
     if not engine.SUPPORTS_GENERATION:
         raise RmstoryError(
@@ -347,6 +355,16 @@ def cmd_translate(args):
     return 0
 
 
+def cmd_engines(args):
+    generation_capable = generation.generation_capable_engines()
+    names = sorted(engines._ENGINES)
+    width = max(len(name) for name in names)
+    for name in names:
+        capability = "translate + generate" if name in generation_capable else "translate only"
+        print("{:<{width}}  {}".format(name, capability, width=width))
+    return 0
+
+
 def cmd_story(args):
     spans = resolve_run(args.paths, recursive=not args.no_recursive)
     _report_warnings(spans)
@@ -466,6 +484,11 @@ def build_parser():
     _add_common_args(p_validate)
     p_validate.set_defaults(func=cmd_validate)
 
+    p_engines = subparsers.add_parser(
+        "engines", help="list registered machine-translation engines and their capabilities"
+    )
+    p_engines.set_defaults(func=cmd_engines)
+
     p_generate = subparsers.add_parser("generate", help="generate story content via an LLM engine")
     generate_subparsers = p_generate.add_subparsers(dest="generate_command", required=True)
 
@@ -474,7 +497,9 @@ def build_parser():
     )
     _add_common_args(p_generate_rewrite)
     p_generate_rewrite.add_argument(
-        "--engine", required=True, help="LLM-backed engine (see rmstory.engines) to generate with"
+        "--engine",
+        help="LLM-backed engine (see rmstory.engines) to generate with; omit to see the "
+        "list of generation-capable engines",
     )
     p_generate_rewrite.add_argument(
         "--theme", help="optional guidance for the new story (e.g. a different setting or plot)"
@@ -486,7 +511,9 @@ def build_parser():
         "new", help="generate a brand-new tagged-span story from a prompt"
     )
     p_generate_new.add_argument(
-        "--engine", required=True, help="LLM-backed engine (see rmstory.engines) to generate with"
+        "--engine",
+        help="LLM-backed engine (see rmstory.engines) to generate with; omit to see the "
+        "list of generation-capable engines",
     )
     p_generate_new.add_argument(
         "--prompt", required=True, help="free-form description of the story to generate"

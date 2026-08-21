@@ -4,7 +4,8 @@
 # `workflow_call` trigger, so the matrix can't drift between the two),
 # then attaches every .deb/.rpm/.sha512 to a GitHub Release for that tag
 # -- a workflow-run artifact has no "latest" download URL and expires,
-# so it can't be what README.md's Install section points users at.
+# so it can't be what README.md's Details > Distro packages section
+# points users at.
 #
 # Filenames are prefixed with their combo name (e.g.
 # opensuse-leap-16-python3-rmstory-...rpm) before upload: rpmbuild's
@@ -14,6 +15,13 @@
 # exactly `python3-rmstory-0.1.0^<date>-1.noarch.rpm`) and would
 # silently overwrite each other once flattened into one release's asset
 # list without this.
+#
+# After the release is published, `publish` also regenerates README.md's
+# packages table (scripts/update-packages-table.py) from the exact assets
+# just uploaded, and pushes that straight to main -- see the job's last
+# two steps. Pushing a commit (not a tag) doesn't re-trigger this
+# workflow or build-packages.yml (whose `paths:` filter doesn't include
+# README.md), so there's no risk of a loop.
 
 name: Release
 
@@ -45,6 +53,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # ref: main, not the tag this workflow triggered from (the default) --
+      # the last two steps below push a commit, which needs a real branch
+      # checked out, not the detached HEAD a tag checkout gives.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
       - uses: actions/download-artifact@v8
         with:
           pattern: rmstory-*
@@ -64,3 +78,13 @@ jobs:
         with:
           files: release-assets/*
           generate_release_notes: true
+      - name: Regenerate README.md's packages table from the assets just published
+        run: python3 scripts/update-packages-table.py release-assets "${{ github.ref_name }}" "${{ github.repository }}"
+      - name: Commit and push the updated table, if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --cached --quiet && exit 0
+          git commit -m "docs: update packages table for ${{ github.ref_name }}"
+          git push origin HEAD:main

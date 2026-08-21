@@ -30,7 +30,7 @@ import logging
 import os
 
 from ..exceptions import TranslationError
-from .base import TranslationEngine, call_with_retry
+from .base import TranslationEngine, build_translate_prompt, call_with_retry
 
 # google-genai logs a one-time WARNING-level notice on the first call
 # recommending Chat.send_message over Models.generate_content for automatic
@@ -50,12 +50,6 @@ logging.getLogger("google_genai.models").setLevel(logging.ERROR)
 # current. Pin an exact version instead via model= or RMSTORY_GEMINI_MODEL
 # if you need reproducible output across a model rollover.
 DEFAULT_MODEL = "gemini-flash-latest"
-
-_TRANSLATE_PROMPT = (
-    "Translate the following text from {from_lang} to {to_lang}. "
-    "Output only the translated text -- no explanation, preamble, or "
-    "surrounding quotation marks.\n\n{text}"
-)
 
 
 def _env_flag(name):
@@ -165,7 +159,7 @@ class GeminiEngine(TranslationEngine):
         return {"api_key": api_key}
 
     def translate(self, text, from_lang, to_lang):
-        prompt = _TRANSLATE_PROMPT.format(from_lang=from_lang, to_lang=to_lang, text=text)
+        prompt = build_translate_prompt(text, from_lang, to_lang)
         return self._complete(prompt)
 
     def generate(self, prompt):

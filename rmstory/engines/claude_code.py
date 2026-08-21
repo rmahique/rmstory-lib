@@ -26,15 +26,9 @@ import shutil
 import subprocess
 
 from ..exceptions import TranslationError
-from .base import TranslationEngine, call_with_retry
+from .base import TranslationEngine, build_translate_prompt, call_with_retry
 
 _DEFAULT_TIMEOUT = 120  # seconds
-
-_PROMPT = (
-    "Translate the following text from {from_lang} to {to_lang}. "
-    "Output only the translated text -- no explanation, preamble, or "
-    "surrounding quotation marks.\n\n{text}"
-)
 
 
 def _default_run(argv, timeout):
@@ -76,7 +70,7 @@ class ClaudeCodeEngine(TranslationEngine):
             )
 
     def translate(self, text, from_lang, to_lang):
-        prompt = _PROMPT.format(from_lang=from_lang, to_lang=to_lang, text=text)
+        prompt = build_translate_prompt(text, from_lang, to_lang)
         return self._complete(prompt)
 
     def generate(self, prompt):

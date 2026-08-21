@@ -14,6 +14,7 @@ other applications call directly:
     translate_text("Hello, traveler.", "en", "es", engine="deepseek")
     translate_text("Hello, traveler.", "en", "es", engine="mistral")
     translate_text("Hello, traveler.", "en", "es", engine="qwen")
+    translate_text("Hello, traveler.", "en", "es", engine="kimi")
 
 This is independent of the CLI and of translation storage -- it's a plain
 function other code can import and call on its own, the same way
@@ -27,6 +28,7 @@ from .deepl import DeepLEngine
 from .deepseek import DeepSeekEngine
 from .gemini import GeminiEngine
 from .google_translate import GoogleTranslateEngine
+from .kimi import KimiEngine
 from .libretranslate import LibreTranslateEngine
 from .microsoft import MicrosoftTranslatorEngine
 from .mistral import MistralEngine
@@ -45,6 +47,7 @@ _ENGINES = {
     "deepseek": DeepSeekEngine,
     "mistral": MistralEngine,
     "qwen": QwenEngine,
+    "kimi": KimiEngine,
 }
 
 
@@ -114,6 +117,7 @@ __all__ = [
     "DeepSeekEngine",
     "GeminiEngine",
     "GoogleTranslateEngine",
+    "KimiEngine",
     "LibreTranslateEngine",
     "MicrosoftTranslatorEngine",
     "MistralEngine",

@@ -9,6 +9,10 @@ distro-specific, so building on an unrelated host is not representative.
 in (this is what `.github/workflows/build-packages.yml` builds and runs
 in CI — same image, same commands, locally or in CI).
 
+Just want a pre-built package, not to build one yourself? See the main
+repo's `README.md` `## Details` `### Distro packages` — its "Latest
+packages" table always links the current release's actual assets.
+
 | Family | Script | Spec/control files | Dockerfile |
 |---|---|---|---|
 | Debian, Ubuntu | `build-deb.sh` | `debian/` | `docker/Dockerfile.debian-bookworm` |

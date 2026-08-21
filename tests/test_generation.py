@@ -58,6 +58,7 @@ def test_generation_capable_engines_matches_llm_backed_registry():
         "deepseek",
         "mistral",
         "qwen",
+        "kimi",
     }
 
 

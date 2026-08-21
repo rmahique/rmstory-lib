@@ -81,7 +81,7 @@ it's never translated, so `translate` never looks for one):
 $ rmstory translate examples/basic_usage.md --to es
 error: .../examples/basic_usage.md:3: no 'es' translation stored for id 'ch1.greeting'
 error: .../examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.reveal'
-hint: pass --engine <name> to machine-translate missing entries on the spot (available: baidu, claude-code, deepl, deepseek, gemini, google-translate, libretranslate, microsoft-translator, mistral, ollama, qwen), or store the translation yourself first via rmstory.storage.translations.store
+hint: pass --engine <name> to machine-translate missing entries on the spot (available: baidu, claude-code, deepl, deepseek, gemini, google-translate, kimi, libretranslate, microsoft-translator, mistral, ollama, qwen), or store the translation yourself first via rmstory.storage.translations.store
 ```
 
 ## Auto-translating with `--engine`
@@ -107,10 +107,11 @@ populate target-language rows right when you extract the source text:
 rmstory extract examples/basic_usage.md --engine gemini --to es --to fr
 ```
 
-Eleven engines are built in: `gemini`, `deepl`, `google-translate`,
+Twelve engines are built in: `gemini`, `deepl`, `google-translate`,
 `microsoft-translator`, `libretranslate`, `baidu`, `claude-code`
 (shells out to the `claude` CLI instead of any API), `ollama` (local,
-open-weight, no API key), `deepseek`, `mistral`, and `qwen` — see the
+open-weight, no API key), `deepseek`, `mistral`, `qwen`, and `kimi` —
+see the
 [GitHub repo](https://github.com/rmahique/rmstory-lib)'s `README.md` for
 each one's credentials and whether it needs an extra installed.
 
@@ -121,10 +122,12 @@ regenerates a file's translatable spans into a different story --
 same tagged-span structure, different plot/wording. `rmstory generate new
 --engine <name> --prompt "..."` writes a brand-new tagged-span document
 from a free-form prompt. Both need an LLM-backed engine (`gemini`,
-`claude-code`, `ollama`, `deepseek`, `mistral`, `qwen`) -- a
-translate-only engine has no free-text generation API to call. See the
-main repo's `README.md` `## Details` `### Story generation` for the full
-picture.
+`claude-code`, `ollama`, `deepseek`, `mistral`, `qwen`, `kimi`) -- a
+translate-only engine has no free-text generation API to call. Omit
+`--engine` (or run `rmstory engines`) to see which registered engines
+support generation -- it lists every engine name alongside "translate
+only" or "translate + generate". See the main repo's `README.md`
+`## Details` `### Story generation` for the full picture.
 
 Once translations are on file, `translate` renders a copy with every
 translated span spliced in at its exact position — everything else in

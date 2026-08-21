@@ -13,7 +13,7 @@ import os
 
 from ..exceptions import TranslationError
 from . import _openai_chat
-from .base import TranslationEngine, call_with_retry
+from .base import TranslationEngine, build_translate_prompt, call_with_retry
 
 _DEFAULT_URL = "https://api.mistral.ai/v1"
 # "-latest" is Mistral's own perpetually-repointed alias for its current
@@ -22,12 +22,6 @@ _DEFAULT_URL = "https://api.mistral.ai/v1"
 # model= or RMSTORY_MISTRAL_MODEL for reproducible output across a
 # model rollover.
 _DEFAULT_MODEL = "mistral-large-latest"
-
-_TRANSLATE_PROMPT = (
-    "Translate the following text from {from_lang} to {to_lang}. "
-    "Output only the translated text -- no explanation, preamble, or "
-    "surrounding quotation marks.\n\n{text}"
-)
 
 
 class MistralEngine(TranslationEngine):
@@ -65,7 +59,7 @@ class MistralEngine(TranslationEngine):
         self._http_post = lambda url, payload: _openai_chat.default_http_post(url, payload, api_key)
 
     def translate(self, text, from_lang, to_lang):
-        prompt = _TRANSLATE_PROMPT.format(from_lang=from_lang, to_lang=to_lang, text=text)
+        prompt = build_translate_prompt(text, from_lang, to_lang)
         return self._complete(prompt)
 
     def generate(self, prompt):

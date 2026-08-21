@@ -17,10 +17,10 @@ Translations are stored via
 [multilang-lib](https://github.com/rmahique/multilang-lib); a story is a
 lightweight ordered-id index layered on top, not a second content store.
 
-This site is usage examples only. For the full CLI reference, all eleven
+This site is usage examples only. For the full CLI reference, all twelve
 translation engines (`gemini`, `deepl`, `google-translate`,
 `microsoft-translator`, `libretranslate`, `baidu`, `claude-code`,
-`ollama`, `deepseek`, `mistral`, `qwen`), and
+`ollama`, `deepseek`, `mistral`, `qwen`, `kimi`), and
 install/test instructions, see the [GitHub repo](https://github.com/rmahique/rmstory-lib)
 — its `README.md` and `requisites.md` (the spec this implementation
 follows).

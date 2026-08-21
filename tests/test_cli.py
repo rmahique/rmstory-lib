@@ -450,3 +450,52 @@ def test_generate_new_with_engine_that_doesnt_support_generation(monkeypatch, ca
 
     assert rc == 1
     assert "doesn't support story generation" in err
+
+
+def test_generate_new_without_engine_lists_generation_capable_engines(monkeypatch, capsys):
+    _use_fake_engine(monkeypatch)
+    _use_fake_generation_engine(monkeypatch)
+
+    rc = main(["generate", "new", "--prompt", "a lighthouse keeper"])
+    err = capsys.readouterr().err
+
+    assert rc == 1
+    assert "--engine is required" in err
+    assert "fake-gen" in err
+    assert "fake-test" not in err
+
+
+def test_generate_rewrite_without_engine_lists_generation_capable_engines(tmp_path, monkeypatch, capsys):
+    _use_filesystem_backend(tmp_path, monkeypatch)
+    _use_fake_generation_engine(monkeypatch)
+    src = tmp_path / "doc.md"
+    src.write_text('<span lang="en" id="greeting">Hello</span>', encoding="utf-8")
+
+    rc = main(["generate", "rewrite", str(src)])
+    err = capsys.readouterr().err
+
+    assert rc == 1
+    assert "--engine is required" in err
+    assert "fake-gen" in err
+
+
+def test_engines_command_lists_every_registered_engine(capsys):
+    rc = main(["engines"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    for name in engines._ENGINES:
+        assert name in out
+
+
+def test_engines_command_marks_generation_capability(monkeypatch, capsys):
+    _use_fake_engine(monkeypatch)
+    _use_fake_generation_engine(monkeypatch)
+
+    rc = main(["engines"])
+    out = capsys.readouterr().out
+    lines = {line.split()[0]: line for line in out.splitlines()}
+
+    assert rc == 0
+    assert "translate + generate" in lines["fake-gen"]
+    assert "translate only" in lines["fake-test"]

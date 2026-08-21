@@ -2,7 +2,7 @@ import urllib.error
 
 import pytest
 
-from rmstory.engines.base import TranslationEngine, call_with_retry
+from rmstory.engines.base import TranslationEngine, build_translate_prompt, call_with_retry
 
 
 class _StatusError(Exception):
@@ -134,3 +134,27 @@ def test_supports_generation_defaults_false():
 def test_generate_not_implemented_by_default():
     with pytest.raises(NotImplementedError):
         TranslationEngine().generate("write a story")
+
+
+def test_build_translate_prompt_plain_text_has_no_placeholder_note():
+    prompt = build_translate_prompt("Hello, traveler.", "en", "ja")
+
+    assert "Hello, traveler." in prompt
+    assert "en" in prompt and "ja" in prompt
+    assert "placeholder" not in prompt
+
+
+def test_build_translate_prompt_with_nested_span_adds_preservation_note():
+    text = 'Under the <span id="assignment.49.1"/> tab.'
+    prompt = build_translate_prompt(text, "en", "ja")
+
+    assert text in prompt
+    assert "placeholder" in prompt
+    assert '<span id="..."/>' in prompt
+
+
+def test_build_translate_prompt_preserves_multiple_placeholders_note_once():
+    text = '<span id="a.1"/> and <span id="a.2"/>'
+    prompt = build_translate_prompt(text, "en", "es")
+
+    assert prompt.count("placeholder") == 1

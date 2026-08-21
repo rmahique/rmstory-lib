@@ -1,6 +1,7 @@
 """The interface every translation engine backend implements."""
 
 import random
+import re
 import subprocess
 import time
 import urllib.error
@@ -8,6 +9,40 @@ import urllib.error
 _DEFAULT_MAX_ATTEMPTS = 3
 _DEFAULT_BASE_DELAY = 1.0  # seconds
 _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
+# Matches render.py's nested_placeholder() output (parser.py), e.g.
+# `<span id="ch1.reveal.1"/>` -- a nested child's content is never inlined
+# into its parent's stored translation, only this self-closing reference.
+_NESTED_PLACEHOLDER_RE = re.compile(r'<span id="[^"]*"/>')
+
+_PRESERVE_PLACEHOLDERS_NOTE = (
+    " The text contains one or more placeholders of the exact form "
+    '<span id="..."/> (self-closing, nothing between the tags) -- copy '
+    "each one into your translation completely unchanged, in the same "
+    "position relative to the surrounding words, without translating, "
+    "removing, or altering the id inside it."
+)
+
+
+def build_translate_prompt(text, from_lang, to_lang):
+    """
+    The shared translate prompt every LLM-backed engine sends, appending
+    `_PRESERVE_PLACEHOLDERS_NOTE` when `text` contains a nested span
+    placeholder -- otherwise a model has no reason not to translate or
+    merge it into the surrounding sentence like any other word, which
+    render.py's rewrite_spans() then rejects (a stored translation must
+    preserve a nested span's placeholder unchanged). Omitted when there's
+    no placeholder so the common case (a leaf span, no nested children)
+    keeps the plain, shorter prompt.
+    """
+    instruction = "Translate the following text from {} to {}.".format(from_lang, to_lang)
+    if _NESTED_PLACEHOLDER_RE.search(text):
+        instruction += _PRESERVE_PLACEHOLDERS_NOTE
+    instruction += (
+        " Output only the translated text -- no explanation, preamble, "
+        "or surrounding quotation marks.\n\n{}".format(text)
+    )
+    return instruction
 
 
 def _is_transient(exc):

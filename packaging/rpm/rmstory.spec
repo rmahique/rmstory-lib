@@ -130,18 +130,18 @@ Provides the rmstory CLI (extract/translate/story/validate) and library
 API for translating and recombining stories authored as tagged <span>
 elements in markdown/HTML files. Translations are stored via
 multilang-lib; a story is a lightweight ordered-id index, not a second
-content store. Eleven pluggable machine-translation engines are available
+content store. Twelve pluggable machine-translation engines are available
 (gemini, deepl, google-translate, microsoft-translator, libretranslate,
-baidu, claude-code, ollama, deepseek, mistral, qwen) -- the last eight
-work out of the box (plain REST calls or a CLI subprocess, no SDK). The
-first three each need their vendor's own SDK, none of which is packaged
-for any distro (pip-only) -- install the one(s) you want with `pip
-install "rmstory[gemini]"`, `"rmstory[deepl]"`, or
+baidu, claude-code, ollama, deepseek, mistral, qwen, kimi) -- the last
+nine work out of the box (plain REST calls or a CLI subprocess, no SDK).
+The first three each need their vendor's own SDK, none of which is
+packaged for any distro (pip-only) -- install the one(s) you want with
+`pip install "rmstory[gemini]"`, `"rmstory[deepl]"`, or
 `"rmstory[google-translate]"` (see README.md). claude-code instead shells
 out to the `claude` CLI (https://claude.com/claude-code), not pip at
-all; ollama, deepseek, mistral, and qwen are plain REST calls needing
-only an API key (ollama needs neither a key nor even a network call off
-this machine).
+all; ollama, deepseek, mistral, qwen, and kimi are plain REST calls
+needing only an API key (ollama needs neither a key nor even a network
+call off this machine).
 
 %prep
 %autosetup -n %{srcname}-%{version}
