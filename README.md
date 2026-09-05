@@ -661,7 +661,11 @@ never hand-edit it, a stale table is worse than an obviously-missing one:
 <!-- PACKAGES_TABLE_START -->
 | Distribution | Version | Package |
 | --- | --- | --- |
-| _no release with built packages is published yet_ | — | use the pip live-editing setup in [Quick start](#quick-start) instead |
+| Debian 12 (bookworm) | 1.1.3 | [debian-bookworm-python3-rmstory_0.1.0+20260905-1_all.deb](https://github.com/rmahique/rmstory-lib/releases/download/1.1.3/debian-bookworm-python3-rmstory_0.1.0+20260905-1_all.deb) |
+| Fedora (latest) | 1.1.3 | [fedora-latest-python3-rmstory-0.1.0^20260905-1.fc44.noarch.rpm](https://github.com/rmahique/rmstory-lib/releases/download/1.1.3/fedora-latest-python3-rmstory-0.1.0^20260905-1.fc44.noarch.rpm) |
+| openSUSE Tumbleweed | 1.1.3 | [opensuse-tumbleweed-python3-rmstory-0.1.0^20260905-1.noarch.rpm](https://github.com/rmahique/rmstory-lib/releases/download/1.1.3/opensuse-tumbleweed-python3-rmstory-0.1.0^20260905-1.noarch.rpm) |
+| openSUSE Leap 16 | 1.1.3 | [opensuse-leap-16-python3-rmstory-0.1.0^20260905-1.noarch.rpm](https://github.com/rmahique/rmstory-lib/releases/download/1.1.3/opensuse-leap-16-python3-rmstory-0.1.0^20260905-1.noarch.rpm) |
+| SLES 15 SP7 | 1.1.3 | [sles-15-sp7-python3-rmstory-0.1.0^20260905-1.noarch.rpm](https://github.com/rmahique/rmstory-lib/releases/download/1.1.3/sles-15-sp7-python3-rmstory-0.1.0^20260905-1.noarch.rpm) |
 <!-- PACKAGES_TABLE_END -->
 
 Every package declares `python3-multilang` as a runtime dependency.
