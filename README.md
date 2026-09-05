@@ -31,7 +31,7 @@ duplicating the source content per language or per variant.
 Translations are stored via
 [multilang-lib](https://github.com/rmahique/multilang-lib), keyed by
 each tagged span's `id` — rmstory itself holds no translation content.
-Machine translation (`rmstory.engines`, twelve built-in engines) and
+Machine translation (`rmstory.engines`, thirteen built-in engines) and
 LLM-backed story generation (`rmstory.generation`) are both opt-in, on
 top of that same storage.
 
@@ -48,11 +48,12 @@ follows.
   [Distro packages](#distro-packages) below.
 - **Nothing else** to get started — translation storage defaults to a
   zero-config filesystem backend (see [CLI](#cli)).
-- **Optional, per machine-translation engine**: `gemini`, `deepl`, and
-  `google-translate` each need their vendor's own SDK installed as a
-  `pip install "rmstory[<engine>]"` extra; every other engine (including
-  every engine capable of story generation) needs nothing beyond the
-  standard library — see [Machine translation engines](#machine-translation-engines).
+- **Optional, per machine-translation engine**: `gemini`, `deepl`,
+  `google-translate`, and `deep-translator` each need a third-party
+  package installed as a `pip install "rmstory[<engine>]"` extra; every
+  other engine (including every engine capable of story generation) needs
+  nothing beyond the standard library — see
+  [Machine translation engines](#machine-translation-engines).
 
 ## How it works
 
@@ -211,6 +212,7 @@ engines` shows:
 $ rmstory engines
 baidu                 translate only
 claude-code           translate + generate
+deep-translator       translate only
 deepl                 translate only
 deepseek              translate + generate
 gemini                translate + generate
@@ -284,7 +286,7 @@ missing — rather than shipping a document that's silently half-English:
 $ rmstory translate examples/basic_usage.md --to es
 error: .../rmstory-lib/examples/basic_usage.md:3: no 'es' translation stored for id 'ch1.greeting'
 error: .../rmstory-lib/examples/basic_usage.md:5: no 'es' translation stored for id 'ch1.reveal'
-hint: pass --engine <name> to machine-translate missing entries on the spot (available: baidu, claude-code, deepl, deepseek, gemini, google-translate, kimi, libretranslate, microsoft-translator, mistral, ollama, qwen), or store the translation yourself first via rmstory.storage.translations.store
+hint: pass --engine <name> to machine-translate missing entries on the spot (available: baidu, claude-code, deep-translator, deepl, deepseek, gemini, google-translate, kimi, libretranslate, microsoft-translator, mistral, ollama, qwen), or store the translation yourself first via rmstory.storage.translations.store
 ```
 
 (`ch1.hero-name` isn't listed — it was never translatable, so `translate`
@@ -342,22 +344,26 @@ translate_text("Hello, traveler.", "en", "es", engine="gemini")
 ```
 
 Engines are pluggable by name through a small registry
-(`rmstory.engines.register_engine`). Twelve are built in: `"gemini"`,
-`"deepl"`, `"google-translate"`, `"microsoft-translator"`,
-`"libretranslate"`, `"baidu"`, `"claude-code"`, `"ollama"`, `"deepseek"`,
-`"mistral"`, `"qwen"`, and `"kimi"`. The first three each wrap their
-vendor's own SDK (`google-genai`, `deepl`, `google-cloud-translate`) —
-none of the three is packaged for any distro, pip-only, so this one-time
-install step is required no matter how you installed rmstory itself
-(pip, `.deb`, or `.rpm` — the native packages can't pull these in via
-`apt`/`zypper` `Depends`, since the SDKs simply aren't there to depend
-on). Each is its own extra, so picking one doesn't drag the others in:
+(`rmstory.engines.register_engine`). Thirteen are built in: `"gemini"`,
+`"deepl"`, `"google-translate"`, `"deep-translator"`,
+`"microsoft-translator"`, `"libretranslate"`, `"baidu"`, `"claude-code"`,
+`"ollama"`, `"deepseek"`, `"mistral"`, `"qwen"`, and `"kimi"`. Three of
+them each wrap a vendor's own SDK (`google-genai`, `deepl`,
+`google-cloud-translate`) — none of those three is packaged for any
+distro, pip-only, so this one-time install step is required no matter how
+you installed rmstory itself (pip, `.deb`, or `.rpm` — the native
+packages can't pull these in via `apt`/`zypper` `Depends`, since the SDKs
+simply aren't there to depend on). A fourth, `deep-translator`, wraps the
+`deep-translator` package, which itself fronts several free/keyed
+services (keyless Google by default) — its own extra too. Each extra is
+separate, so picking one doesn't drag the others in:
 
 ```bash
 pip install "rmstory[gemini]"            # google-genai
 pip install "rmstory[deepl]"             # deepl
 pip install "rmstory[google-translate]"  # google-cloud-translate (only needed
                                           # for that engine's account-based mode)
+pip install "rmstory[deep-translator]"   # deep-translator (keyless Google + others)
 ```
 
 `microsoft-translator`, `libretranslate`, `baidu`, `ollama`, `deepseek`,
@@ -365,7 +371,7 @@ pip install "rmstory[google-translate]"  # google-cloud-translate (only needed
 them is a plain REST call made with the standard library, so those eight
 work immediately after any install method.
 
-All twelve engines automatically retry a transient failure (429/5xx, a
+All thirteen engines automatically retry a transient failure (429/5xx, a
 connection-level timeout/reset, or claude-code's subprocess timeout) a
 few times with exponential backoff before giving up — a momentary "high
 demand" or rate-limit response from the vendor's API doesn't abort an
@@ -445,6 +451,24 @@ Vertex mode) doesn't silently require ADC setup for this engine too. Pass
 export GOOGLE_TRANSLATE_API_KEY=...   # API-key mode -- wins if both are set
 export GOOGLE_CLOUD_PROJECT=...       # account-based (Advanced/v3), used only
                                        # when GOOGLE_TRANSLATE_API_KEY isn't set
+```
+
+**deep-translator** — the keyless walk-up option `google-translate`
+isn't: it wraps the `deep-translator` package, whose default `google`
+provider uses the same free web endpoint a browser does, so it needs no
+account or key at all. Pick a backend with `provider=` — `"google"`
+(default, keyless), `"mymemory"` (keyless), `"deepl"` (needs a key via
+`api_key=` or `DEEPL_AUTH_KEY`), or `"libre"` (a key only if the instance
+enforces one). The trade-off for keyless convenience is the free
+endpoint's own rate limits and its *passthrough* behaviour: for a
+language pair it can't handle it may echo the source text back rather
+than raising — verify the output isn't just the input if you must trust
+it. Rate-limit and server errors are retried automatically like every
+other engine.
+
+```bash
+# default google provider needs nothing; only the deepl provider takes a key
+export DEEPL_AUTH_KEY=...   # only when provider="deepl"
 ```
 
 **microsoft-translator** — like deepl, one credential shape covers both
@@ -549,9 +573,9 @@ embedding rmstory as a library.
 translating existing content. Only an engine backed by a general-purpose
 LLM can do this (`gemini`, `claude-code`, `ollama`, `deepseek`, `mistral`,
 `qwen`, `kimi` — `TranslationEngine.SUPPORTS_GENERATION`); a translate-only
-engine (`deepl`, `google-translate`, `microsoft-translator`,
-`libretranslate`, `baidu`) has no free-text generation API to call and is
-rejected up front, both from the CLI and from
+engine (`deepl`, `google-translate`, `deep-translator`,
+`microsoft-translator`, `libretranslate`, `baidu`) has no free-text
+generation API to call and is rejected up front, both from the CLI and from
 `rmstory.generation.generate_with_engine`.
 
 **`rmstory generate rewrite`** — regenerates every translatable span's
@@ -637,11 +661,7 @@ never hand-edit it, a stale table is worse than an obviously-missing one:
 <!-- PACKAGES_TABLE_START -->
 | Distribution | Version | Package |
 | --- | --- | --- |
-| Debian 12 (bookworm) | 1.1.2 | [debian-bookworm-python3-rmstory_0.1.0+20260825-1_all.deb](https://github.com/rmahique/rmstory-lib/releases/download/1.1.2/debian-bookworm-python3-rmstory_0.1.0+20260825-1_all.deb) |
-| Fedora (latest) | 1.1.2 | [fedora-latest-python3-rmstory-0.1.0^20260825-1.fc44.noarch.rpm](https://github.com/rmahique/rmstory-lib/releases/download/1.1.2/fedora-latest-python3-rmstory-0.1.0^20260825-1.fc44.noarch.rpm) |
-| openSUSE Tumbleweed | 1.1.2 | [opensuse-tumbleweed-python3-rmstory-0.1.0^20260825-1.noarch.rpm](https://github.com/rmahique/rmstory-lib/releases/download/1.1.2/opensuse-tumbleweed-python3-rmstory-0.1.0^20260825-1.noarch.rpm) |
-| openSUSE Leap 16 | 1.1.2 | [opensuse-leap-16-python3-rmstory-0.1.0^20260825-1.noarch.rpm](https://github.com/rmahique/rmstory-lib/releases/download/1.1.2/opensuse-leap-16-python3-rmstory-0.1.0^20260825-1.noarch.rpm) |
-| SLES 15 SP7 | 1.1.2 | [sles-15-sp7-python3-rmstory-0.1.0^20260825-1.noarch.rpm](https://github.com/rmahique/rmstory-lib/releases/download/1.1.2/sles-15-sp7-python3-rmstory-0.1.0^20260825-1.noarch.rpm) |
+| _no release with built packages is published yet_ | — | use the pip live-editing setup in [Quick start](#quick-start) instead |
 <!-- PACKAGES_TABLE_END -->
 
 Every package declares `python3-multilang` as a runtime dependency.

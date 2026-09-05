@@ -26,6 +26,105 @@ def test_rewrite_spans_duplicate_id_each_span_renders_its_own_position(tmp_path)
     )
 
 
+def test_replace_lang_attr_unquoted_value_keeps_closing_bracket():
+    # lang=en> (no quotes) is valid: an unquoted attribute value ends at
+    # whitespace or '>'. A greedy \S+ used to swallow the '>' itself,
+    # silently deleting it from the tag -- reproduces the corruption seen
+    # in a real translated file (lang=en> became lang=pt, losing the '>'
+    # and fusing the next word into the tag).
+    tag = '<span id="x" lang=en>'
+    assert render._replace_lang_attr(tag, "pt") == '<span id="x" lang=pt>'
+
+
+def test_rewrite_spans_unquoted_lang_attribute_keeps_closing_bracket(tmp_path):
+    path = tmp_path / "a.md"
+    path.write_text('<span id="a" lang=en> tab and log in.</span>', encoding="utf-8")
+    spans = resolve_run([path])
+
+    result = render.rewrite_spans(path, spans, {"a": (" aba e faça login.", "pt")})
+
+    assert result == '<span id="a" lang=pt> aba e faça login.</span>'
+
+
+def test_rewrite_spans_reindents_multiline_replacement_to_match_source_indent(tmp_path):
+    # A span living inside a YAML `contents: |` literal block scalar --
+    # every line of that block must stay indented to at least the tag's
+    # own level or YAML parses the rest of the document as something
+    # else entirely. A translation engine only trims the outer edges of
+    # what it returns (see rmstory.engines.*'s `.strip()` calls), so a
+    # multi-line replacement comes back with none of the original
+    # per-line indentation -- reproduces a real Instruqt YAML-corruption
+    # bug where a translated span's continuation lines lost their
+    # indent and broke the enclosing block scalar.
+    path = tmp_path / "a.md"
+    path.write_text(
+        "notes:\n"
+        "- type: text\n"
+        "  contents: |\n"
+        '    <span id="a" lang="en">Hello</span>\n'
+        '    <img src="x"/>\n',
+        encoding="utf-8",
+    )
+    spans = resolve_run([path])
+
+    result = render.rewrite_spans(path, spans, {"a": ("Line one.\nLine two.", "es")})
+
+    assert result == (
+        "notes:\n"
+        "- type: text\n"
+        "  contents: |\n"
+        '    <span id="a" lang="es">Line one.\n'
+        "    Line two.</span>\n"
+        '    <img src="x"/>\n'
+    )
+
+
+def test_rewrite_spans_reindents_replacement_chained_after_a_prior_span(tmp_path):
+    # A span whose tag doesn't start its own line -- it's chained right
+    # after a *previous* span's closing tag on the same line -- but that
+    # line still sits inside an indented YAML `contents: |` block. The
+    # earlier (buggy) heuristic only reindented a span sitting alone on
+    # its own line, so this real-world shape (reproduces a genuine
+    # Instruqt YAML break: `yaml: line N: could not find expected ':'`)
+    # was missed entirely and its continuation line came back with zero
+    # indentation, ending the block scalar early.
+    path = tmp_path / "a.md"
+    path.write_text(
+        "notes:\n"
+        "- type: text\n"
+        "  contents: |\n"
+        '    <span id="a" lang="en">First</span><span id="b" lang="en">Hello</span>\n'
+        '    <img src="x"/>\n',
+        encoding="utf-8",
+    )
+    spans = resolve_run([path])
+
+    result = render.rewrite_spans(path, spans, {"b": ("Line one.\nLine two.", "es")})
+
+    assert result == (
+        "notes:\n"
+        "- type: text\n"
+        "  contents: |\n"
+        '    <span id="a" lang="en">First</span><span id="b" lang="es">Line one.\n'
+        "    Line two.</span>\n"
+        '    <img src="x"/>\n'
+    )
+
+
+def test_rewrite_spans_leaves_inline_multiline_replacement_unindented(tmp_path):
+    # A span that shares its line with other content (not alone on its
+    # own line) has no structural indent to reproduce -- adding one
+    # would be pure invention, so continuation lines are left exactly
+    # as the replacement provided them.
+    path = tmp_path / "a.md"
+    path.write_text('Intro <span id="a" lang="en">Hello</span> outro', encoding="utf-8")
+    spans = resolve_run([path])
+
+    result = render.rewrite_spans(path, spans, {"a": ("Line one.\nLine two.", "es")})
+
+    assert result == 'Intro <span id="a" lang="es">Line one.\nLine two.</span> outro'
+
+
 def test_rewrite_spans_preserves_everything_else(tmp_path):
     path = tmp_path / "a.md"
     path.write_text(

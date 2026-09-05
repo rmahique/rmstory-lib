@@ -22,7 +22,50 @@ from collections import defaultdict
 from .exceptions import ValidationError
 from .parser import nested_placeholder
 
-_LANG_ATTR_RE = re.compile(r'lang\s*=\s*(?:"(?P<dq>[^"]*)"|\'(?P<sq>[^\']*)\'|(?P<uq>\S+))')
+_LANG_ATTR_RE = re.compile(r'lang\s*=\s*(?:"(?P<dq>[^"]*)"|\'(?P<sq>[^\']*)\'|(?P<uq>[^\s>]+))')
+
+
+def _line_indent(text, offset):
+    """The leading whitespace of the line containing `offset` in `text`.
+
+    Taken from the line's true start, not from wherever `offset` itself
+    falls on it -- a span chained right after a previous span's closing
+    tag (`...</span><span id="b" lang="en">...`) doesn't start its own
+    line, but the *line* is still inside whatever structure indented it
+    (e.g. a YAML `contents: |` literal block scalar), and every line of
+    that block needs the same indent regardless of which tag happens to
+    open it. Only a genuinely unindented line (plain inline prose) comes
+    back empty.
+    """
+    line_start = text.rfind("\n", 0, offset) + 1
+    line_end = text.find("\n", offset)
+    if line_end == -1:
+        line_end = len(text)
+    line = text[line_start:line_end]
+    return line[: len(line) - len(line.lstrip())]
+
+
+def _reindent(content, indent):
+    """Re-apply `indent` to every non-blank line of `content` after the
+    first (which continues directly on the tag's own line and needs no
+    indent of its own).
+
+    A translation engine only trims the outer edges of what it returns
+    (see rmstory.engines.*'s `.strip()` calls) -- it has no idea the
+    original per-line indentation wasn't part of the translatable text
+    but was load-bearing formatting (e.g. a YAML `contents: |` literal
+    block scalar, which requires *every* line indented to at least its
+    opening line's level or the block ends early and the rest of the
+    document is parsed as something else entirely). Splicing translated
+    text back in verbatim silently produces exactly that kind of
+    corruption; reproducing the original span's own indent on every
+    continuation line keeps the surrounding structure intact regardless
+    of what shape the translation came back in.
+    """
+    if not indent:
+        return content
+    lines = content.split("\n")
+    return "\n".join(lines[:1] + [indent + line if line.strip() else line for line in lines[1:]])
 
 
 def _replace_lang_attr(tag_text, new_lang):
@@ -112,7 +155,7 @@ def rewrite_spans(path, spans, replacements):
         if span.id in replacements:
             new_content, new_lang = replacements[span.id]
             tag_text = _replace_lang_attr(span.tag_text, new_lang)
-            content = new_content
+            content = _reindent(new_content, _line_indent(text, span.tag_start))
             # Every nested child's placeholder must be resolved here, not
             # just dirty ones: `content` came from storage, so it uses the
             # placeholder convention for *every* nested child regardless

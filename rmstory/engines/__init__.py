@@ -24,6 +24,7 @@ multilang-lib's `db_connector` is independent of any particular caller.
 from .baidu import BaiduEngine
 from .base import TranslationEngine
 from .claude_code import ClaudeCodeEngine
+from .deep_translator import DeepTranslatorEngine
 from .deepl import DeepLEngine
 from .deepseek import DeepSeekEngine
 from .gemini import GeminiEngine
@@ -39,6 +40,7 @@ _ENGINES = {
     "gemini": GeminiEngine,
     "deepl": DeepLEngine,
     "google-translate": GoogleTranslateEngine,
+    "deep-translator": DeepTranslatorEngine,
     "microsoft-translator": MicrosoftTranslatorEngine,
     "libretranslate": LibreTranslateEngine,
     "baidu": BaiduEngine,
@@ -115,6 +117,7 @@ __all__ = [
     "ClaudeCodeEngine",
     "DeepLEngine",
     "DeepSeekEngine",
+    "DeepTranslatorEngine",
     "GeminiEngine",
     "GoogleTranslateEngine",
     "KimiEngine",
